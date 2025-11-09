@@ -230,7 +230,7 @@ const LearningHub = () => {
                         Is synthetic data safe to use?
                       </h4>
                       <p className="text-sm text-muted-foreground leading-relaxed">
-                        Yes—when generated correctly, it preserves patterns without exposing sensitive records.
+                        Yes, when generated correctly, it preserves patterns without exposing sensitive records.
                       </p>
                     </div>
 
@@ -260,7 +260,7 @@ const LearningHub = () => {
                         Can the system be extended?
                       </h4>
                       <p className="text-sm text-muted-foreground leading-relaxed">
-                        Absolutely—each pipeline is modular and easy to customize or replace.
+                        Absolutely. Each pipeline is modular and easy to customize or replace.
                       </p>
                     </div>
                   </div>
