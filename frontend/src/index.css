@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+@layer base {
+  :root {
+    --rich-black: 202 86% 10%; /* #031926 */
+    --teal: 187 32% 41%; /* #468189 */
+    --cambridge: 169 24% 57%; /* #77ACA2 */
+    --ash: 174 21% 63%; /* #9DBEBB */
+    --parchment: 43 64% 88%; /* #F4E9CD */
+
+    --font-sans: "Inter", "Inter var", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+    --background: var(--parchment);
+    --foreground: var(--rich-black);
+
+    --card: 0 0% 100%;
+    --card-foreground: var(--rich-black);
+
+    --popover: 0 0% 100%;
+    --popover-foreground: var(--rich-black);
+
+    --primary: var(--teal);
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: var(--cambridge);
+    --secondary-foreground: var(--rich-black);
+
+    --muted: var(--ash);
+    --muted-foreground: 187 16% 30%;
+
+    --accent: var(--cambridge);
+    --accent-foreground: var(--rich-black);
+
+    --success: 145 55% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: var(--ash);
+    --input: var(--ash);
+    --ring: var(--teal);
+
+    --radius: 16px;
+    --shadow-soft: 0 20px 45px -30px rgba(3, 25, 38, 0.4);
+
+    --sidebar-background: var(--parchment);
+    --sidebar-foreground: var(--rich-black);
+    --sidebar-primary: var(--teal);
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: var(--cambridge);
+    --sidebar-accent-foreground: var(--rich-black);
+    --sidebar-border: var(--ash);
+    --sidebar-ring: var(--teal);
+  }
+
+  .dark {
+    --background: 202 80% 6%;
+    --foreground: 43 64% 88%;
+
+    --card: 202 80% 10%;
+    --card-foreground: 43 64% 88%;
+
+    --popover: 202 80% 10%;
+    --popover-foreground: 43 64% 88%;
+
+    --primary: var(--teal);
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 202 30% 25%;
+    --secondary-foreground: 43 64% 88%;
+
+    --muted: 202 30% 20%;
+    --muted-foreground: 169 18% 65%;
+
+    --accent: 202 30% 20%;
+    --accent-foreground: 43 64% 88%;
+
+    --success: 145 55% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 202 25% 22%;
+    --input: 202 25% 22%;
+    --ring: var(--teal);
+
+    --sidebar-background: 202 80% 6%;
+    --sidebar-foreground: 43 64% 88%;
+    --sidebar-primary: var(--teal);
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 202 30% 20%;
+    --sidebar-accent-foreground: 43 64% 88%;
+    --sidebar-border: 202 25% 22%;
+    --sidebar-ring: var(--teal);
+  }
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@layer utilities {
+  .rounded-card {
+    border-radius: 16px;
+  }
+
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+
+  .border-ash {
+    border-color: hsl(var(--ash));
+  }
+
+  .border-\[\#EB6605\] {
+    border-color: hsl(var(--teal)) !important;
+  }
+}

@@ -1,0 +1,64 @@
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { NavBar } from "@/components/ui/tubelight-navbar";
+import { Database, Upload, BarChart3, Download, Settings } from "lucide-react";
+import Index from "./pages/Index";
+import Schema from "./pages/Schema";
+import Results from "./pages/Results";
+import Export from "./pages/Export";
+import SettingsPage from "./pages/Settings";
+import NotFound from "./pages/NotFound";
+import { useEffect } from "react";
+
+const queryClient = new QueryClient();
+
+// Component to scroll to top on route change
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+}
+
+const navItems = [
+  { name: 'Upload', url: '/', icon: Upload },
+  { name: 'Schema', url: '/schema', icon: Database },
+  { name: 'Results', url: '/results', icon: BarChart3 },
+  { name: 'Export', url: '/export', icon: Download },
+  { name: 'Settings', url: '/settings', icon: Settings },
+];
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <ScrollToTop />
+        <div className="flex min-h-screen w-full flex-col bg-background">
+          <main className="flex-1 overflow-auto">
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/schema" element={<Schema />} />
+              <Route path="/results" element={<Results />} />
+              <Route path="/export" element={<Export />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </main>
+        </div>
+        {/* Tubelight Navbar - fixed at bottom center */}
+        <NavBar items={navItems} />
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
+
+export default App;
