@@ -39,23 +39,23 @@ const Index = () => {
     <PageWrapper>
       <div className="space-y-12">
         {/* Hero Section */}
-        <section className="text-center space-y-4 py-8">
-          <h1 className="text-5xl font-bold text-foreground tracking-tight">
-            Arctyx
-          </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            A smarter way to label, generate, and clean data.
-          </p>
-          <div className="flex items-center justify-center gap-2 pt-2">
-            <span className="text-sm text-muted-foreground">Powered by</span>
+        <section className="text-center py-8 space-y-4">
+          {/* Title Logo */}
+          <div className="flex justify-center">
             <img 
-              src="/NvidiaLogo.png" 
-              alt="NVIDIA" 
-              className="h-5"
+              src="/Arctyxlogo.png" 
+              alt="Arctyx" 
+              className="h-32"
             />
           </div>
+
+          {/* Subtitle */}
+          <p className="text-[17px] text-muted-foreground max-w-2xl mx-auto font-normal pt-1">
+            A smarter way to label, generate, and clean data.
+          </p>
+
           {/* Frost Divider */}
-          <div className="pt-8">
+          <div className="pt-6">
             <div className="w-full max-w-3xl mx-auto h-px bg-gradient-to-r from-transparent via-ash to-transparent"></div>
           </div>
         </section>
