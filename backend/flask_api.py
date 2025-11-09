@@ -128,14 +128,19 @@ def upload_file():
         # Get file size
         file_size = os.path.getsize(file_path)
         
-        # Return relative path (from backend directory) for use in other endpoints
+        # Return absolute path for consistency with other endpoints
+        # Also return relative path for convenience
+        absolute_path = str(file_path)
         relative_path = f"uploaded_data/{safe_filename}"
         
         return jsonify({
-            'file_path': relative_path,
+            'success': True,
+            'file_path': absolute_path,  # Absolute path (preferred for API use)
+            'relative_path': relative_path,  # Relative path (for display)
             'filename': safe_filename,
             'original_filename': original_filename,
-            'size_bytes': file_size
+            'size_bytes': file_size,
+            'message': f'File uploaded successfully'
         }), 200
         
     except Exception as e:
@@ -156,8 +161,21 @@ def get_dataset_info():
         data = request.get_json()
         data_path = data.get('data_path')
         
-        if not data_path or not os.path.exists(data_path):
+        if not data_path:
             return jsonify({'error': 'Invalid or missing data_path'}), 400
+        
+        # Handle both relative and absolute paths
+        # If relative, try resolving from backend directory or current working directory
+        if not os.path.isabs(data_path):
+            # Try relative to backend directory first
+            backend_path = os.path.join(backend_dir, data_path)
+            if os.path.exists(backend_path):
+                data_path = backend_path
+            # Otherwise, try current working directory (might already be absolute after join)
+            elif not os.path.exists(data_path):
+                return jsonify({'error': f'File not found: {data_path}'}), 404
+        elif not os.path.exists(data_path):
+            return jsonify({'error': f'File not found: {data_path}'}), 404
         
         # Load dataset
         if data_path.endswith('.parquet'):
@@ -939,6 +957,7 @@ if __name__ == '__main__':
 
 📖 API Documentation:
   Health Check:        GET  /health
+  Upload File:         POST /api/upload
   Dataset Info:        POST /api/dataset/info
   
   Labeling:           POST /api/labeling/create-labels

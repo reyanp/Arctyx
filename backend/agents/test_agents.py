@@ -1,3 +1,4 @@
+import warnings
 import json
 import os
 import re
@@ -9,6 +10,9 @@ import time
 import numpy as np
 import pandas as pd
 import requests
+
+# Suppress sklearn feature name warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='sklearn.utils.validation')
 
 # Add project root to path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -465,7 +469,7 @@ class DataFoundryAgentTester:
             print(f"  - Created holdout test set: {len(holdout_df)} samples")
         
         try:
-            print(f"\nTarget Utility: {target_utility_pct:.0%} of baseline")
+            print(f"\nTarget Quality Score: {target_utility_pct:.0%} (based on reconstruction error)")
             print(f"Max Attempts: {max_attempts}")
             
             # Run the training pipeline
@@ -1016,7 +1020,7 @@ if __name__ == '__main__':
     parser.add_argument('--target-auc', type=float, default=0.75,
                        help='Target AUC for labeling pipeline (default: 0.75)')
     parser.add_argument('--target-utility', type=float, default=0.85,
-                       help='Target utility percentage for training pipeline (default: 0.85)')
+                       help='Target quality score (0-1) for training pipeline based on reconstruction error (default: 0.85)')
     parser.add_argument('--num-samples', type=int, default=100,
                        help='Number of samples to generate (for generation pipeline, default: 100)')
     parser.add_argument('--label', type=float, default=1.0,

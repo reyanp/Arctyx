@@ -2,24 +2,34 @@
 Utility functions for the training pipeline.
 """
 
-import hashlib
-
+import warnings
+import json
+import torch
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score, f1_score
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
+import joblib
+from pathlib import Path
+
+# Suppress sklearn feature name warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='sklearn.utils.validation')
+
+# Add DataFoundry to path for model loading
+import sys
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
+from DataFoundry.utils import Preprocessor, CustomDataset
+from torch.utils.data import DataLoader
 
 
-def evaluate_model_utility(
+def evaluate_model_quality(
     config_path: str,
     model_path: str,
     preprocessor_path: str,
     holdout_test_path: str
 ) -> dict:
     """
-    Runs the 'Train Synthetic, Test Real' (TSTR) benchmark to evaluate
-    the machine learning utility of the generated data.
+    Evaluates model quality using reconstruction error on holdout data.
+    This is more appropriate for generative models than classification-based metrics.
     
     Args:
         config_path: Path to the model configuration JSON
@@ -28,63 +38,141 @@ def evaluate_model_utility(
         holdout_test_path: Path to the holdout test data (real data)
     
     Returns:
-        Dictionary with 'baseline_f1' and 'utility_f1' scores
+        Dictionary with 'reconstruction_error' and 'quality_score' (0-1, higher is better)
     """
-    print("--- Running Model Utility Evaluation ---")
+    print("--- Running Model Quality Evaluation ---")
     try:
-        # 1. Load the REAL holdout test data
-        real_test_df = pd.read_parquet(holdout_test_path)
+        # Load config
+        with open(config_path, 'r') as f:
+            config = json.load(f)
         
-        # Assume 'income' or 'income_binary' is the target
-        target_col = 'income' if 'income' in real_test_df.columns else 'income_binary'
+        params = config['model_params']
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
-        # Filter to only numerical columns (same as training pipeline)
-        numerical_cols = real_test_df.select_dtypes(include=[np.number]).columns.tolist()
-        if target_col in numerical_cols:
-            numerical_cols.remove(target_col)
+        # Calculate input_dim automatically if not specified (for tabular models)
+        # This matches the logic in trainer.py
+        if 'input_dim' not in params and 'text_model' not in params:
+            num_numerical = len(params.get('feature_cols', {}).get('numerical_cols', []))
+            num_categorical = len(params.get('feature_cols', {}).get('categorical_cols', []))
+            params['input_dim'] = num_numerical + num_categorical
+            print(f"Auto-calculated input_dim: {params['input_dim']} (numerical: {num_numerical}, categorical: {num_categorical})")
         
-        # Use only numerical features
-        X_real_test = real_test_df[numerical_cols]
-        y_real_test = real_test_df[target_col]
+        # Load holdout test data
+        test_df = pd.read_parquet(holdout_test_path)
+        print(f"Evaluating on {len(test_df)} holdout samples")
         
-        print(f"Using {len(numerical_cols)} numerical features for evaluation")
+        # Get condition column from config
+        condition_cols = params.get('condition_cols', [])
+        if not condition_cols:
+            condition_cols = ['label_probability']  # Default fallback
         
-        # 2. Get the BASELINE score (Train on Real, Test on Real)
-        # We split the test set itself to get a train/test combo
-        X_train_real, X_val_real, y_train_real, y_val_real = train_test_split(
-            X_real_test, y_real_test, test_size=0.4, random_state=42
-        )
+        # Ensure holdout test set has the required condition column(s)
+        # If missing, add it using available label columns or default values
+        for condition_col in condition_cols:
+            if condition_col not in test_df.columns:
+                # Try to find a suitable replacement
+                if 'income_binary' in test_df.columns:
+                    # Use income_binary as a proxy for label_probability
+                    test_df[condition_col] = test_df['income_binary'].astype(float)
+                    print(f"  Added missing condition column '{condition_col}' using 'income_binary'")
+                elif 'label' in test_df.columns:
+                    test_df[condition_col] = test_df['label'].astype(float)
+                    print(f"  Added missing condition column '{condition_col}' using 'label'")
+                else:
+                    # Use default value (0.5) if no label column available
+                    test_df[condition_col] = 0.5
+                    print(f"  Added missing condition column '{condition_col}' with default value 0.5")
         
-        baseline_model = RandomForestClassifier(random_state=42, n_estimators=50)
-        baseline_model.fit(X_train_real, y_train_real)
-        baseline_preds = baseline_model.predict(X_val_real)
-        baseline_score = f1_score(y_val_real, baseline_preds)
-        print(f"Baseline (Real) F1 Score: {baseline_score:.4f}")
+        # Load preprocessor
+        preprocessor = joblib.load(preprocessor_path)
         
-        # 3. Generate SYNTHETIC data and train on it
-        # NOTE: For the hackathon, we'll simulate utility score
-        # In a full implementation, we would:
-        # 1. Load model from model_path, config_path
-        # 2. Generate synthetic data using the trained model
-        # 3. Train a new classifier on synthetic data
-        # 4. Test it on real validation data
-        # 5. Compare F1 scores
+        # Create dataset and dataloader
+        test_dataset = CustomDataset(test_df, preprocessor)
+        test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
         
-        print("Note: Simulating utility score for hackathon demo.")
-        print("Full TSTR implementation would generate synthetic data and retrain.")
+        # Load model
+        import importlib
+        model_name = params['model_template'].replace('.py', '')
+        model_module = importlib.import_module(f'DataFoundry.models.{model_name}')
+        ModelClass = getattr(model_module, params['model_class_name'])
+        model = ModelClass(params).to(device)
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.eval()
         
-        # Simulate a utility score based on model path hash (deterministic but varied)
-        # This gives us scores between 70-100% of baseline
-        hash_val = int(hashlib.md5(model_path.encode()).hexdigest(), 16)
-        utility_ratio = 0.70 + (hash_val % 30) / 100.0  # 0.70 to 0.99
-        utility_score = baseline_score * utility_ratio
+        # Calculate reconstruction error
+        total_error = 0.0
+        num_samples = 0
         
-        print(f"Utility (Synthetic) F1 Score: {utility_score:.4f}")
-        print(f"Utility Ratio: {utility_score/baseline_score:.2%}")
+        with torch.no_grad():
+            for batch in test_loader:
+                condition = batch['condition'].to(device)
+                
+                # Handle different feature types
+                if 'numerical_features' in batch or 'categorical_features' in batch:
+                    # Check if this is MixedDataCVAE (needs special handling)
+                    is_mixed_cvae = params.get('model_class_name') == 'MixedDataCVAE'
+                    
+                    if is_mixed_cvae:
+                        # MixedDataCVAE requires separate numerical and categorical inputs
+                        x_num = batch['numerical_features'].to(device)
+                        x_cat = batch['categorical_features'].to(device).long()
+                        recon_num, recon_cat_logits, mu, logvar = model(x_num, x_cat, condition)
+                        
+                        # Calculate error: MSE for numerical, CrossEntropy for categorical
+                        num_error = torch.nn.functional.mse_loss(recon_num, x_num, reduction='sum')
+                        cat_error = 0.0
+                        for i, cat_logits in enumerate(recon_cat_logits):
+                            cat_error += torch.nn.functional.cross_entropy(
+                                cat_logits, 
+                                x_cat[:, i], 
+                                reduction='sum'
+                            )
+                        error = num_error + cat_error
+                        total_error += error.item()
+                        num_samples += x_num.size(0)
+                    else:
+                        # Standard tabular model
+                        feature_list = []
+                        if 'numerical_features' in batch:
+                            feature_list.append(batch['numerical_features'].to(device))
+                        if 'categorical_features' in batch:
+                            cat_features = batch['categorical_features'].to(device).float()
+                            feature_list.append(cat_features)
+                        
+                        x = torch.cat(feature_list, dim=1) if len(feature_list) > 1 else feature_list[0]
+                        
+                        # Forward pass
+                        recon_x, mu, logvar = model(x, condition)
+                        
+                        # Calculate MSE reconstruction error
+                        error = torch.nn.functional.mse_loss(recon_x, x, reduction='sum')
+                        total_error += error.item()
+                        num_samples += x.size(0)
         
-        return {"baseline_f1": baseline_score, "utility_f1": utility_score}
+        # Average reconstruction error per sample
+        avg_reconstruction_error = total_error / num_samples if num_samples > 0 else float('inf')
+        
+        # Convert to quality score (0-1, lower error = higher quality)
+        # Normalize: assume good models have error < 1.0, scale accordingly
+        quality_score = max(0.0, min(1.0, 1.0 / (1.0 + avg_reconstruction_error)))
+        
+        print(f"Average Reconstruction Error: {avg_reconstruction_error:.6f}")
+        print(f"Quality Score: {quality_score:.4f} (higher is better, 0-1 scale)")
+        
+        return {
+            "reconstruction_error": float(avg_reconstruction_error),
+            "quality_score": float(quality_score),
+            "num_samples_evaluated": num_samples
+        }
         
     except Exception as e:
         print(f"Error during model evaluation: {e}")
-        return {"baseline_f1": 0.0, "utility_f1": 0.0}
+        import traceback
+        traceback.print_exc()
+        # Return default scores if evaluation fails
+        return {
+            "reconstruction_error": float('inf'),
+            "quality_score": 0.0,
+            "num_samples_evaluated": 0
+        }
 

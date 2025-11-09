@@ -1,9 +1,13 @@
+import warnings
 import torch
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from transformers import AutoTokenizer
 from torch.utils.data import Dataset
+
+# Suppress sklearn feature name warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='sklearn.utils.validation')
 
 
 class Preprocessor:

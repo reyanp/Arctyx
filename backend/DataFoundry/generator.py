@@ -1,3 +1,4 @@
+import warnings
 import importlib
 import json
 import os
@@ -9,6 +10,9 @@ import torch
 from torch.utils.data import Dataset
 
 from DataFoundry.utils import Preprocessor
+
+# Suppress sklearn feature name warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='sklearn.utils.validation')
 
 
 def generate_data(model_path, config_path, label, num_to_generate, output_path, output_format='parquet'):

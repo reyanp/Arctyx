@@ -1,3 +1,4 @@
+import warnings
 import json
 import importlib
 import torch
@@ -6,6 +7,9 @@ from torch.utils.data import DataLoader
 import pandas as pd
 import joblib
 from DataFoundry.utils import Preprocessor, CustomDataset
+
+# Suppress sklearn feature name warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='sklearn.utils.validation')
 
 
 def _vae_loss_function(recon_x, x, mu, logvar):

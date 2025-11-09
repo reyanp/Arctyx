@@ -122,7 +122,15 @@ def run_labeling_pipeline(user_goal: str,
         print("Agent 1 (Heuristic Writer): Generating new labeling functions...")
         existing_lf_names = [lf.name for lf in current_lfs]
         
-        writer_prompt = f"""Write Python labeling functions NOW. NO thinking, NO explanations - ONLY code.
+        # Retry logic with progressively more aggressive prompts
+        max_llm_retries = 3
+        lf_code_string = None
+        retry_count = 0
+        
+        while retry_count < max_llm_retries:
+            try:
+                # Build base prompt
+                base_prompt = f"""Write Python labeling functions NOW. NO thinking, NO explanations - ONLY code.
 
 TASK: Create 3-5 NEW Python functions for: {user_goal}
 
@@ -145,34 +153,99 @@ def lf_NAME_HERE(x):
         return -1
 
 NOW WRITE YOUR CODE (ONLY CODE, NO TEXT):"""
-        
-        try:
-            # Call the agent with the tool-binding
-            response = NEMOTRON_WRITER_AGENT.invoke(writer_prompt)
-            
-            # Extract code from either tool call or content
-            if response.tool_calls:
-                # Model used tool calling (preferred path)
-                lf_code_string = response.tool_calls[0]['args']['code']
-                current_lfs = _load_lfs_from_string(lf_code_string, current_lfs)
-            else:
-                # Fallback: Model put code in content instead of tool call
-                if hasattr(response, 'content') and response.content:
-                    lf_code_string = response.content
-                    current_lfs = _load_lfs_from_string(lf_code_string, current_lfs)
-                    if not current_lfs:
-                        print(f"Error: Failed to generate labeling functions from model response.")
-                        break
-                else:
-                    print(f"Error: Model returned no usable response.")
-                    break
-            
-            if not current_lfs:
-                print(f"Error: No labeling functions generated. Aborting.")
-                break
                 
-        except Exception as e:
-            print(f"Error: Heuristic Writer failed: {e}")
+                # Add aggressive feedback on retries
+                if retry_count > 0:
+                    error_feedback = "\n\n" + "="*60 + "\n"
+                    error_feedback += f"ERROR: Your previous response (attempt {retry_count}) was INVALID or MALFORMED.\n"
+                    error_feedback += "You MUST use the submit_labeling_functions tool to submit your code.\n"
+                    error_feedback += "You MUST return ONLY valid Python code with @labeling_function() decorators.\n"
+                    error_feedback += "DO NOT include any explanatory text, markdown, code blocks, or thinking.\n"
+                    if retry_count >= 2:
+                        error_feedback += "CRITICAL: This is your FINAL attempt. You MUST return valid code NOW.\n"
+                        error_feedback += "Use the tool call format EXACTLY as specified. No exceptions.\n"
+                        error_feedback += "If you fail again, the pipeline will abort.\n"
+                    error_feedback += "="*60 + "\n\n"
+                    writer_prompt = error_feedback + base_prompt
+                else:
+                    writer_prompt = base_prompt
+                
+                if retry_count > 0:
+                    print(f"  Retry attempt {retry_count}/{max_llm_retries - 1} with stricter prompt...")
+                
+                # Call the agent with the tool-binding
+                response = NEMOTRON_WRITER_AGENT.invoke(writer_prompt)
+                
+                # Extract code from either tool call or content
+                lf_code_string = None
+                
+                # Check for tool calls (preferred path)
+                if hasattr(response, 'tool_calls') and response.tool_calls:
+                    # Model used tool calling (preferred path)
+                    try:
+                        if isinstance(response.tool_calls, list) and len(response.tool_calls) > 0:
+                            # Handle different tool call formats
+                            tool_call = response.tool_calls[0]
+                            if isinstance(tool_call, dict):
+                                lf_code_string = tool_call.get('args', {}).get('code')
+                            elif hasattr(tool_call, 'args'):
+                                lf_code_string = tool_call.args.get('code') if isinstance(tool_call.args, dict) else getattr(tool_call.args, 'code', None)
+                    except Exception as e:
+                        print(f"  Warning: Error extracting code from tool call: {e}")
+                
+                # Fallback: Check content if no tool call code found
+                if not lf_code_string:
+                    if hasattr(response, 'content') and response.content:
+                        content = response.content
+                        # Handle both string and object content
+                        if isinstance(content, str):
+                            lf_code_string = content
+                        elif hasattr(content, 'text'):
+                            lf_code_string = content.text
+                        else:
+                            lf_code_string = str(content)
+                
+                # Validate that we got code
+                if not lf_code_string:
+                    retry_count += 1
+                    if retry_count < max_llm_retries:
+                        print(f"  Error: Model returned no usable response. Retrying...")
+                        continue
+                    else:
+                        print(f"Error: Model returned no usable response after {max_llm_retries} attempts.")
+                        break
+                
+                # Validate that the code contains labeling functions
+                initial_lf_count = len(current_lfs)
+                current_lfs = _load_lfs_from_string(lf_code_string, current_lfs)
+                
+                if len(current_lfs) == initial_lf_count:
+                    # No new functions were added - invalid code
+                    retry_count += 1
+                    if retry_count < max_llm_retries:
+                        print(f"  Error: No valid labeling functions found in response. Retrying...")
+                        continue
+                    else:
+                        print(f"Error: Failed to generate labeling functions after {max_llm_retries} attempts.")
+                        break
+                
+                # Success - we got valid labeling functions
+                if retry_count > 0:
+                    print(f"  ✓ Successfully generated labeling functions on retry {retry_count}")
+                break
+                    
+            except Exception as e:
+                retry_count += 1
+                if retry_count < max_llm_retries:
+                    print(f"  Error: Heuristic Writer failed: {e}. Retrying...")
+                    continue
+                else:
+                    print(f"Error: Heuristic Writer failed after {max_llm_retries} attempts: {e}")
+                    break
+        
+        # Final check
+        if not current_lfs:
+            print(f"Error: No labeling functions generated after {max_llm_retries} attempts. Aborting.")
             break
 
         # --- 2. Labeler (Programmatic Worker) ---
