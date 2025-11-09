@@ -6,7 +6,6 @@ import { CardModern, CardModernHeader, CardModernTitle, CardModernContent } from
 import { FileSpreadsheet, Clock, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { BackendStatusIndicator } from "@/components/BackendStatusIndicator";
 import { getFileDownloadUrl } from "@/lib/api";
 
 interface GenerationHistoryItem {
@@ -82,11 +81,6 @@ const Index = () => {
           <div className="pt-6">
             <div className="w-full max-w-3xl mx-auto h-px bg-gradient-to-r from-transparent via-ash to-transparent"></div>
           </div>
-        </section>
-
-        {/* Backend Status */}
-        <section className="flex justify-center">
-          <BackendStatusIndicator variant="badge" />
         </section>
 
         {/* Dataset Upload Section */}

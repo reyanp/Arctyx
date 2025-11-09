@@ -62,10 +62,7 @@ export function BackendStatusIndicator({ variant = 'badge' }: BackendStatusIndic
                 <span className="text-xs">Checking...</span>
               </>
             ) : isHealthy ? (
-              <>
-                <Activity className="h-3 w-3" />
-                <span className="text-xs">Connected</span>
-              </>
+              <Activity className="h-3 w-3" />
             ) : (
               <>
                 <AlertCircle className="h-3 w-3" />
