@@ -1,2 +1,8 @@
-.venv/
-.env
+venv/
+**/__pycache__/
+*.pyc
+backend/uploaded_data/
+backend/output_data/*.parquet
+.env.env
+.env.*
+!.env.example

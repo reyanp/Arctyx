@@ -81,6 +81,67 @@ def health_check():
     })
 
 
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    """
+    Upload a dataset file (CSV or Parquet) to the server.
+    
+    Form data:
+    - file: The file to upload (multipart/form-data)
+    
+    Returns:
+    {
+        "file_path": "uploaded_data/filename.csv",
+        "filename": "filename.csv",
+        "size_bytes": 12345
+    }
+    """
+    try:
+        # Check if file was included in request
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        
+        # Check if filename is empty
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Check file extension
+        if not (file.filename.endswith('.csv') or file.filename.endswith('.parquet')):
+            return jsonify({'error': 'Only .csv and .parquet files are supported'}), 400
+        
+        # Generate safe filename (prevent path traversal)
+        from werkzeug.utils import secure_filename
+        import time
+        
+        original_filename = secure_filename(file.filename)
+        # Add timestamp to prevent overwrites
+        timestamp = int(time.time() * 1000)
+        name, ext = os.path.splitext(original_filename)
+        safe_filename = f"{name}_{timestamp}{ext}"
+        
+        # Save file to upload folder
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
+        file.save(file_path)
+        
+        # Get file size
+        file_size = os.path.getsize(file_path)
+        
+        # Return relative path (from backend directory) for use in other endpoints
+        relative_path = f"uploaded_data/{safe_filename}"
+        
+        return jsonify({
+            'file_path': relative_path,
+            'filename': safe_filename,
+            'original_filename': original_filename,
+            'size_bytes': file_size
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
 @app.route('/api/dataset/info', methods=['POST'])
 def get_dataset_info():
     """

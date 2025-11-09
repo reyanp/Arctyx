@@ -5,6 +5,7 @@ import { CardModern, CardModernHeader, CardModernTitle, CardModernContent } from
 import { FileSpreadsheet, Clock, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { BackendStatusIndicator } from "@/components/BackendStatusIndicator";
 
 // Mock data for upload history
 const uploadHistory = [
@@ -60,10 +61,15 @@ const Index = () => {
           </div>
         </section>
 
-        {/* Upload Section */}
+        {/* Backend Status */}
+        <section className="flex justify-center">
+          <BackendStatusIndicator variant="badge" />
+        </section>
+
+        {/* Dataset Upload Section */}
         <section className="space-y-6">
-          <SectionTitle subtitle="Upload your CSV dataset to begin synthetic data generation">
-            Upload
+          <SectionTitle subtitle="Upload your dataset to begin the data generation workflow">
+            Upload Dataset
           </SectionTitle>
           <FileUpload />
         </section>

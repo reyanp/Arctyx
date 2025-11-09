@@ -1,5 +1,5 @@
 import { ExportSection } from "@/components/ExportSection";
-import { ResultsTable } from "@/components/ResultsTable";
+import { DataPreview } from "@/components/DataPreview";
 import { PageWrapper } from "@/components/ui/page-wrapper";
 import { SectionTitle } from "@/components/ui/section-title";
 
@@ -18,9 +18,9 @@ const Export = () => {
         {/* Synthetic Samples Preview */}
         <section className="space-y-6">
           <SectionTitle subtitle="Preview of generated synthetic samples">
-            Synthetic Samples Preview
+            Synthetic Data Preview
           </SectionTitle>
-          <ResultsTable />
+          <DataPreview />
         </section>
       </div>
     </PageWrapper>
