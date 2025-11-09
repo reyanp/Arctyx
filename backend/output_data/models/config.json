@@ -1,0 +1,37 @@
+{
+  "data_path": "output_data/adult_labeled.parquet",
+  "output_model_path": "output_data/models/model.pth",
+  "preprocessor_path": "output_data/models/preprocessor.joblib",
+  "model_params": {
+    "model_template": "tabular_cvae.py",
+    "model_class_name": "TabularCVAE",
+    "latent_dim": 64,
+    "condition_dim": 1,
+    "encoder_hidden_layers": [
+      128,
+      64
+    ],
+    "decoder_hidden_layers": [
+      64,
+      128
+    ],
+    "feature_cols": {
+      "numerical_cols": [
+        "age",
+        "fnlwgt",
+        "education.num",
+        "capital.gain",
+        "capital.loss",
+        "hours.per.week"
+      ]
+    },
+    "condition_cols": [
+      "label_probability"
+    ]
+  },
+  "training_params": {
+    "batch_size": 128,
+    "learning_rate": 0.001,
+    "epochs": 3
+  }
+}
