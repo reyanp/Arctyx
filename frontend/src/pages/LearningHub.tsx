@@ -5,15 +5,15 @@ import { CardModern, CardModernContent } from "@/components/ui/card-modern";
 const LearningHub = () => {
   return (
     <PageWrapper>
-      <div className="space-y-12">
-        {/* Sections 1 & 2 - Two Column Layout */}
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="space-y-8">
+        {/* Row 1: Sections 1 & 2 - Uniform Grid */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
           {/* Section 1: Why This Matters */}
-          <div className="space-y-6">
+          <div className="space-y-6 flex flex-col">
             <SectionTitle>
               Why This Matters
             </SectionTitle>
-            <CardModern>
+            <CardModern className="flex-1">
               <CardModernContent>
                 <div className="space-y-6">
                   {/* Problem Statement */}
@@ -66,11 +66,11 @@ const LearningHub = () => {
           </div>
 
           {/* Section 2: The Three-Pipeline System */}
-          <div className="space-y-6">
+          <div className="space-y-6 flex flex-col">
             <SectionTitle>
               The Three-Pipeline System
             </SectionTitle>
-            <CardModern>
+            <CardModern className="flex-1">
               <CardModernContent>
                 <div className="space-y-5">
                   {/* Intro */}
@@ -113,62 +113,62 @@ const LearningHub = () => {
           </div>
         </section>
 
-        {/* Section 3: How the Agents Work - Full Width */}
-        <section className="mt-12 space-y-6">
-          <SectionTitle>
-            How the Agents Work
-          </SectionTitle>
-          <CardModern>
-            <CardModernContent>
-              <div className="space-y-5">
-                {/* Intro */}
-                <p className="text-sm text-foreground leading-relaxed">
-                  DataFoundry uses an orchestrated team of AI agents, each responsible for a specific part of the data pipeline. 
-                  This creates a fast, reliable workflow without manual intervention.
-                </p>
-
-                {/* Flow Step 1 */}
-                <div className="space-y-1">
-                  <h4 className="text-sm font-semibold text-foreground">
-                    <span className="text-primary">1.</span> Orchestrator Agent:
-                  </h4>
-                  <p className="text-sm text-muted-foreground leading-relaxed pl-5">
-                    Coordinates the workflow and decides which pipeline to run based on the user's dataset and settings.
+        {/* Row 2: Sections 3 & 4 - Uniform Grid */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+          {/* Section 3: How the Agents Work */}
+          <div className="space-y-6 flex flex-col">
+            <SectionTitle>
+              How the Agents Work
+            </SectionTitle>
+            <CardModern className="flex-1">
+              <CardModernContent>
+                <div className="space-y-5">
+                  {/* Intro */}
+                  <p className="text-sm text-foreground leading-relaxed">
+                    DataFoundry uses an orchestrated team of AI agents, each responsible for a specific part of the data pipeline. 
+                    This creates a fast, reliable workflow without manual intervention.
                   </p>
-                </div>
 
-                {/* Flow Step 2 */}
-                <div className="space-y-1">
-                  <h4 className="text-sm font-semibold text-foreground">
-                    <span className="text-primary">2.</span> Specialist Agents:
-                  </h4>
-                  <p className="text-sm text-muted-foreground leading-relaxed pl-5">
-                    Individual agents handle labeling, generation, or anomaly detection using Nemotron-powered reasoning.
-                  </p>
-                </div>
+                  {/* Flow Step 1 */}
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold text-foreground">
+                      <span className="text-primary">1.</span> Orchestrator Agent:
+                    </h4>
+                    <p className="text-sm text-muted-foreground leading-relaxed pl-5">
+                      Coordinates the workflow and decides which pipeline to run based on the user's dataset and settings.
+                    </p>
+                  </div>
 
-                {/* Flow Step 3 */}
-                <div className="space-y-1">
-                  <h4 className="text-sm font-semibold text-foreground">
-                    <span className="text-primary">3.</span> Unified Output:
-                  </h4>
-                  <p className="text-sm text-muted-foreground leading-relaxed pl-5">
-                    Results from each agent are merged into a cleaned, labeled, and optionally expanded dataset ready for export or training.
-                  </p>
-                </div>
-              </div>
-            </CardModernContent>
-          </CardModern>
-        </section>
+                  {/* Flow Step 2 */}
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold text-foreground">
+                      <span className="text-primary">2.</span> Specialist Agents:
+                    </h4>
+                    <p className="text-sm text-muted-foreground leading-relaxed pl-5">
+                      Individual agents handle labeling, generation, or anomaly detection using Nemotron-powered reasoning.
+                    </p>
+                  </div>
 
-        {/* Sections 4 & 5 - Two Column Layout */}
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-12">
+                  {/* Flow Step 3 */}
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold text-foreground">
+                      <span className="text-primary">3.</span> Unified Output:
+                    </h4>
+                    <p className="text-sm text-muted-foreground leading-relaxed pl-5">
+                      Results from each agent are merged into a cleaned, labeled, and optionally expanded dataset ready for export or training.
+                    </p>
+                  </div>
+                </div>
+              </CardModernContent>
+            </CardModern>
+          </div>
+
           {/* Section 4: How We Use Nemotron */}
-          <div className="space-y-6">
+          <div className="space-y-6 flex flex-col">
             <SectionTitle>
               How We Use Nemotron
             </SectionTitle>
-            <CardModern>
+            <CardModern className="flex-1">
               <CardModernContent>
                 <div className="space-y-5">
                   {/* Intro */}
@@ -208,8 +208,10 @@ const LearningHub = () => {
               </CardModernContent>
             </CardModern>
           </div>
+        </section>
 
-          {/* Section 5: FAQ & Open Source */}
+        {/* Row 3: Section 5 - Full Width */}
+        <section className="mt-4">
           <div className="space-y-6">
             <SectionTitle>
               FAQ & Open Source
