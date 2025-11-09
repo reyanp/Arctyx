@@ -4,12 +4,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { NavBar } from "@/components/ui/tubelight-navbar";
-import { Database, Upload, BarChart3, Download, Settings } from "lucide-react";
+import { Database, Upload, BarChart3, Download, BookOpen } from "lucide-react";
 import Index from "./pages/Index";
 import Schema from "./pages/Schema";
 import Results from "./pages/Results";
 import Export from "./pages/Export";
-import SettingsPage from "./pages/Settings";
+import LearningHub from "./pages/LearningHub";
 import NotFound from "./pages/NotFound";
 import { useEffect } from "react";
 
@@ -31,7 +31,7 @@ const navItems = [
   { name: 'Schema', url: '/schema', icon: Database },
   { name: 'Results', url: '/results', icon: BarChart3 },
   { name: 'Export', url: '/export', icon: Download },
-  { name: 'Settings', url: '/settings', icon: Settings },
+  { name: 'Learn', url: '/learn', icon: BookOpen },
 ];
 
 const App = () => (
@@ -48,7 +48,7 @@ const App = () => (
               <Route path="/schema" element={<Schema />} />
               <Route path="/results" element={<Results />} />
               <Route path="/export" element={<Export />} />
-              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/learn" element={<LearningHub />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

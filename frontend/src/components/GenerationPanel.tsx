@@ -4,16 +4,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sparkles } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
-export function GenerationPanel() {
-  const navigate = useNavigate();
+interface GenerationPanelProps {
+  onGenerate?: () => void;
+}
 
+export function GenerationPanel({ onGenerate }: GenerationPanelProps) {
   const handleGenerate = () => {
     // TODO: Add actual generation logic here
     console.log("Generating synthetic data...");
-    // Navigate to results page after generation
-    navigate("/results");
+    // Call parent handler
+    if (onGenerate) {
+      onGenerate();
+    }
   };
 
   return (
