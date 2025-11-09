@@ -132,41 +132,21 @@ def agent_generate():
         
         # Convert CSV to Parquet if needed (agent pipelines require Parquet)
         if dataset_path:
-            print("\n" + "="*80)
-            print("[AGENT CSV CONVERSION] Starting conversion process")
-            print("="*80)
-            print(f"[AGENT] Received dataset_path from frontend: {dataset_path}")
-            print(f"[AGENT] Path is absolute: {os.path.isabs(dataset_path)}")
-            print(f"[AGENT] Backend directory: {backend_dir}")
-            
             # Check if file is CSV
             if dataset_path.lower().endswith('.csv'):
-                print(f"[AGENT] File extension is .csv, conversion needed")
-                
                 # Convert CSV to Parquet for agent
                 try:
-                    print(f"\n[AGENT CONVERSION STEP 1] Resolving path...")
-                    
                     # Ensure we have the absolute path
                     original_path = dataset_path
                     if not os.path.isabs(dataset_path):
                         # Strip 'backend/' prefix if present to avoid double backend/backend
                         if dataset_path.startswith('backend/'):
                             dataset_path = dataset_path[len('backend/'):]
-                            print(f"[AGENT] Stripped 'backend/' prefix: {original_path} -> {dataset_path}")
                         
                         dataset_path = os.path.join(backend_dir, dataset_path)
-                        print(f"[AGENT] Converted relative to absolute: {original_path} -> {dataset_path}")
-                    else:
-                        print(f"[AGENT] Path is already absolute: {dataset_path}")
-                    
-                    print(f"\n[AGENT CONVERSION STEP 2] Checking file existence...")
-                    print(f"[AGENT] CSV path: {dataset_path}")
-                    print(f"[AGENT] File exists: {os.path.exists(dataset_path)}")
                     
                     if not os.path.exists(dataset_path):
                         error_msg = f"CSV file not found at: {dataset_path}"
-                        print(f"[AGENT ERROR] {error_msg}")
                         return jsonify({
                             'output': error_msg,
                             'error': error_msg,
@@ -181,55 +161,26 @@ def agent_generate():
                             'steps_completed': []
                         }), 400
                     
-                    print(f"[AGENT] File size: {os.path.getsize(dataset_path)} bytes")
-                    
-                    print(f"\n[AGENT CONVERSION STEP 3] Reading CSV file...")
                     # Read CSV
                     df = pd.read_csv(dataset_path)
-                    print(f"[AGENT] ✓ CSV loaded successfully")
-                    print(f"[AGENT]   Rows: {len(df)}")
-                    print(f"[AGENT]   Columns: {len(df.columns)}")
-                    print(f"[AGENT]   Column names: {df.columns.tolist()}")
-                    print(f"[AGENT]   Memory usage: {df.memory_usage(deep=True).sum() / 1024:.2f} KB")
                     
-                    print(f"\n[AGENT CONVERSION STEP 4] Preparing Parquet path...")
                     # Create parquet path (same directory, add _agent suffix)
                     parquet_path = dataset_path.rsplit('.csv', 1)[0] + '_agent.parquet'
-                    print(f"[AGENT] Target Parquet path: {parquet_path}")
                     
                     # Ensure directory exists
                     parquet_dir = os.path.dirname(parquet_path)
-                    print(f"[AGENT] Target directory: {parquet_dir}")
-                    print(f"[AGENT] Directory exists: {os.path.exists(parquet_dir)}")
-                    
                     if not os.path.exists(parquet_dir):
                         os.makedirs(parquet_dir, exist_ok=True)
-                        print(f"[AGENT] Created directory: {parquet_dir}")
                     
-                    print(f"\n[AGENT CONVERSION STEP 5] Writing Parquet file...")
                     # Save as parquet with explicit engine
                     df.to_parquet(parquet_path, index=False, engine='pyarrow')
-                    print(f"[AGENT] ✓ Parquet write command completed")
                     
-                    print(f"\n[AGENT CONVERSION STEP 6] Verifying Parquet file...")
+                    # Verify it's a valid parquet file by trying to read it
                     if os.path.exists(parquet_path):
-                        file_size = os.path.getsize(parquet_path)
-                        print(f"[AGENT] ✓ Parquet file exists")
-                        print(f"[AGENT]   Path: {parquet_path}")
-                        print(f"[AGENT]   Size: {file_size} bytes")
-                        
-                        # Verify it's a valid parquet file by trying to read it
-                        print(f"[AGENT] Attempting to read back Parquet file for verification...")
                         try:
                             test_df = pd.read_parquet(parquet_path)
-                            print(f"[AGENT] ✓ Parquet file verified successfully")
-                            print(f"[AGENT]   Read {len(test_df)} rows, {len(test_df.columns)} columns")
-                            print(f"[AGENT]   Column names match: {test_df.columns.tolist() == df.columns.tolist()}")
                         except Exception as verify_error:
                             error_msg = f"Parquet file created but failed verification: {verify_error}"
-                            print(f"[AGENT ERROR] {error_msg}")
-                            import traceback
-                            traceback.print_exc()
                             return jsonify({
                                 'output': error_msg,
                                 'error': error_msg,
@@ -245,7 +196,6 @@ def agent_generate():
                             }), 400
                     else:
                         error_msg = f"Parquet file not found after write: {parquet_path}"
-                        print(f"[AGENT ERROR] {error_msg}")
                         return jsonify({
                             'output': error_msg,
                             'error': error_msg,
@@ -262,16 +212,9 @@ def agent_generate():
                     
                     # Update dataset_path to use the parquet file
                     dataset_path = parquet_path
-                    print(f"\n[AGENT] ✓ Conversion complete")
-                    print(f"[AGENT] Using Parquet file: {dataset_path}")
-                    print("="*80 + "\n")
                     
                 except Exception as conv_error:
                     error_msg = f'Failed to convert CSV to Parquet: {str(conv_error)}'
-                    print(f"\n[AGENT ERROR] {error_msg}")
-                    import traceback
-                    traceback.print_exc()
-                    print("="*80 + "\n")
                     return jsonify({
                         'output': error_msg,
                         'error': error_msg,
@@ -285,40 +228,18 @@ def agent_generate():
                         },
                         'steps_completed': []
                     }), 400
-            else:
-                print(f"[AGENT] File is not CSV (extension: {dataset_path.split('.')[-1]})")
-                print(f"[AGENT] Using original path: {dataset_path}")
             
             # Enhance the message with dataset path
-            print(f"\n[AGENT] Final dataset path to send to orchestrator: {dataset_path}")
-            print(f"[AGENT] File exists: {os.path.exists(dataset_path)}")
-            if os.path.exists(dataset_path):
-                print(f"[AGENT] File size: {os.path.getsize(dataset_path)} bytes")
             input_message = f"{input_message}\n\nDataset path: {dataset_path}"
         
         # Call orchestrator
-        print("\n" + "="*80)
-        print("[AGENT] Calling orchestrator service")
-        print("="*80)
         orchestrator_url = 'http://localhost:8000/generate'
-        print(f"[AGENT] Orchestrator URL: {orchestrator_url}")
-        print(f"[AGENT] Request payload:")
-        print(f"  - input_message length: {len(input_message)} chars")
-        print(f"  - input_message content:\n{input_message}")
-        print("="*80 + "\n")
         
         response = requests.post(
             orchestrator_url,
             json={'input_message': input_message},
             timeout=300  # 5 minute timeout for long-running operations
         )
-        
-        print("\n" + "="*80)
-        print("[AGENT] Orchestrator response received")
-        print("="*80)
-        print(f"[AGENT] Status code: {response.status_code}")
-        print(f"[AGENT] Response preview: {response.text[:500]}...")
-        print("="*80 + "\n")
         
         if response.status_code != 200:
             return jsonify({
@@ -337,9 +258,6 @@ def agent_generate():
         
         # Parse orchestrator response
         result = response.json()
-        
-        # Log the orchestrator response for debugging
-        print(f"Orchestrator response: {result}")
         
         # Ensure response has all required fields
         if 'output' not in result:

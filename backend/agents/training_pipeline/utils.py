@@ -44,7 +44,7 @@ def evaluate_model_quality(
     
     # If no holdout test path provided, skip evaluation
     if not holdout_test_path or holdout_test_path.strip() == "":
-        print("[EVALUATION] No holdout test path provided. Skipping evaluation.")
+        # No holdout test path provided, skipping evaluation
         return {
             "reconstruction_error": None,
             "quality_score": 1.0,  # Default to perfect score if no test data
@@ -69,7 +69,7 @@ def evaluate_model_quality(
             print(f"Auto-calculated input_dim: {params['input_dim']} (numerical: {num_numerical}, categorical: {num_categorical})")
         
         # Load holdout test data
-        print(f"[EVALUATION] Loading holdout test data from: {holdout_test_path}")
+        # Loading holdout test data
         test_df = pd.read_parquet(holdout_test_path)
         print(f"Evaluating on {len(test_df)} holdout samples")
         

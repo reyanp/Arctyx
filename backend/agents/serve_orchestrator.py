@@ -61,17 +61,6 @@ def label_dataset(user_goal: str, raw_data_path: str, hand_labeled_examples_path
     Returns:
         Path to the labeled parquet file, or empty string if labeling fails
     """
-    print("\n" + "="*80)
-    print("[ORCHESTRATOR TOOL] label_dataset called")
-    print("="*80)
-    print(f"[ORCHESTRATOR] user_goal: {user_goal}")
-    print(f"[ORCHESTRATOR] raw_data_path: {raw_data_path}")
-    print(f"[ORCHESTRATOR] raw_data_path type: {type(raw_data_path)}")
-    print(f"[ORCHESTRATOR] hand_labeled_examples_path: {hand_labeled_examples_path}")
-    print(f"[ORCHESTRATOR] target_auc_score: {target_auc_score}")
-    print(f"[ORCHESTRATOR] max_attempts: {max_attempts}")
-    print("="*80 + "\n")
-    
     return run_labeling_pipeline(
         user_goal=user_goal,
         raw_data_path=raw_data_path,
@@ -96,18 +85,6 @@ def train_model(labeled_data_path: str, holdout_test_path: str = "",
     Returns:
         Dictionary with keys: config_path, model_path, preprocessor_path
     """
-    print("\n" + "="*80)
-    print("[ORCHESTRATOR TOOL] train_model called")
-    print("="*80)
-    print(f"[TRAIN] labeled_data_path: {labeled_data_path}")
-    print(f"[TRAIN] labeled_data_path type: {type(labeled_data_path)}")
-    print(f"[TRAIN] labeled_data_path length: {len(labeled_data_path)}")
-    print(f"[TRAIN] holdout_test_path: {holdout_test_path}")
-    print(f"[TRAIN] holdout_test_path type: {type(holdout_test_path)}")
-    print(f"[TRAIN] target_utility_pct: {target_utility_pct}")
-    print(f"[TRAIN] max_attempts: {max_attempts}")
-    print("="*80 + "\n")
-    
     if not labeled_data_path:
         error_msg = "ERROR: labeled_data_path is empty! Cannot proceed with training."
         print(error_msg)
@@ -119,12 +96,6 @@ def train_model(labeled_data_path: str, holdout_test_path: str = "",
         target_utility_pct=target_utility_pct,
         max_attempts=max_attempts
     )
-    
-    print(f"\n[TRAIN] Training complete:")
-    print(f"[TRAIN]   config_path: {config_path}")
-    print(f"[TRAIN]   model_path: {model_path}")
-    print(f"[TRAIN]   preprocessor_path: {preprocessor_path}")
-    print("="*80 + "\n")
     
     return (
         f"config_path: {config_path}\n"
@@ -151,17 +122,6 @@ def generate_synthetic_data(config_path: str, model_path: str, preprocessor_path
     Returns:
         Path to generated synthetic data file
     """
-    print("\n" + "="*80)
-    print("[ORCHESTRATOR TOOL] generate_synthetic_data called")
-    print("="*80)
-    print(f"[GENERATE] config_path: {config_path}")
-    print(f"[GENERATE] model_path: {model_path}")
-    print(f"[GENERATE] preprocessor_path: {preprocessor_path}")
-    print(f"[GENERATE] label: {label}")
-    print(f"[GENERATE] num_to_generate: {num_to_generate}")
-    print(f"[GENERATE] output_format: {output_format}")
-    print("="*80 + "\n")
-    
     if not all([config_path, model_path, preprocessor_path]):
         error_msg = (
             "ERROR: Missing required paths for generation! "
@@ -178,10 +138,6 @@ def generate_synthetic_data(config_path: str, model_path: str, preprocessor_path
         num_to_generate=num_to_generate,
         output_format=output_format
     )
-    
-    print(f"\n[GENERATE] Generation complete:")
-    print(f"[GENERATE]   output_path: {result}")
-    print("="*80 + "\n")
     
     return f"synthetic_output_path: {result}"
 
@@ -399,15 +355,6 @@ async def generate(request: GenerateRequest):
     - file_paths: Dictionary of file paths for each step
     - steps_completed: List of steps that were executed
     """
-    print("\n" + "="*80)
-    print("[ORCHESTRATOR ENDPOINT] /generate endpoint called")
-    print("="*80)
-    print(f"[ORCHESTRATOR] Received request:")
-    print(f"[ORCHESTRATOR] Input message length: {len(request.input_message)} chars")
-    print(f"[ORCHESTRATOR] Input message preview: {request.input_message[:200]}...")
-    print(f"[ORCHESTRATOR] Full input message:\n{request.input_message}")
-    print("="*80 + "\n")
-    
     try:
         # Strict fallback: If a dataset path is provided, run training -> generation programmatically
         # This prevents the LLM from looping or skipping required steps
@@ -420,9 +367,6 @@ async def generate(request: GenerateRequest):
                 num_to_generate = int(num_match.group(1)) if num_match else 100
                 # Default label if not specified
                 label = 1.0
-
-                print(f"[STRICT MODE] Detected dataset path: {ds_path}")
-                print(f"[STRICT MODE] num_to_generate: {num_to_generate}, label: {label}")
 
                 # Step 1: Train model (skip evaluation if no holdout provided)
                 config_path, model_path, preprocessor_path = run_training_pipeline(
@@ -467,7 +411,7 @@ async def generate(request: GenerateRequest):
                         steps_completed=steps_completed,
                     )
                 else:
-                    print("[STRICT MODE] Training failed to produce required artifacts; falling back to agent.")
+                    pass  # Fall back to agent
 
         # Run the agent with recursion limit to prevent infinite loops
         result = await agent.ainvoke(

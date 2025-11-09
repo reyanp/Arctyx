@@ -11,8 +11,6 @@ interface GenerationPanelProps {
 
 export function GenerationPanel({ onGenerate }: GenerationPanelProps) {
   const handleGenerate = () => {
-    // TODO: Add actual generation logic here
-    console.log("Generating synthetic data...");
     // Call parent handler
     if (onGenerate) {
       onGenerate();

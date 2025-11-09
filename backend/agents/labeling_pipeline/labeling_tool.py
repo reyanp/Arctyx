@@ -99,60 +99,16 @@ def run_labeling_pipeline(user_goal: str,
     This is a self-correcting agentic tool for data labeling.
     It orchestrates a team of sub-agents to generate and refine labels.
     """
-    print("\n" + "="*80)
-    print(f"[LABELING PIPELINE] Starting Labeling Pipeline")
-    print("="*80)
-    print(f"[LABELING PIPELINE] Goal: '{user_goal}'")
-    print(f"[LABELING PIPELINE] Raw data path: {raw_data_path}")
-    print(f"[LABELING PIPELINE] Hand labeled examples path: {hand_labeled_examples_path}")
-    print(f"[LABELING PIPELINE] Target AUC score: {target_auc_score}")
-    print(f"[LABELING PIPELINE] Max attempts: {max_attempts}")
-    
     current_lfs = []
     best_auc = 0.0
     best_labeled_file = ""
     auc_history = []  # Track AUC scores across attempts for the Tuner
     
     # Load raw data *once*
-    print(f"\n[LABELING PIPELINE] Loading raw data...")
-    print(f"[LABELING PIPELINE] File path: {raw_data_path}")
-    print(f"[LABELING PIPELINE] Path is absolute: {os.path.isabs(raw_data_path)}")
-    print(f"[LABELING PIPELINE] File exists: {os.path.exists(raw_data_path)}")
-    
-    if os.path.exists(raw_data_path):
-        print(f"[LABELING PIPELINE] File size: {os.path.getsize(raw_data_path)} bytes")
-        
-        # Try to detect file type by reading first few bytes
-        try:
-            with open(raw_data_path, 'rb') as f:
-                magic_bytes = f.read(4)
-                print(f"[LABELING PIPELINE] First 4 bytes (hex): {magic_bytes.hex()}")
-                print(f"[LABELING PIPELINE] Expected Parquet magic: 'PAR1' or '5041 5231' in hex")
-                
-                # Check if it looks like a Parquet file
-                if magic_bytes == b'PAR1':
-                    print(f"[LABELING PIPELINE] ✓ File appears to be a valid Parquet file (magic bytes match)")
-                else:
-                    print(f"[LABELING PIPELINE] ✗ WARNING: File does not appear to be Parquet!")
-                    print(f"[LABELING PIPELINE]   Magic bytes: {magic_bytes}")
-                    print(f"[LABELING PIPELINE]   As string: {magic_bytes.decode('ascii', errors='replace')}")
-        except Exception as magic_check_error:
-            print(f"[LABELING PIPELINE] Warning: Could not check magic bytes: {magic_check_error}")
-    
     try:
-        print(f"[LABELING PIPELINE] Attempting to read Parquet file with pandas...")
         df = pd.read_parquet(raw_data_path)
-        print(f"[LABELING PIPELINE] ✓ Successfully loaded Parquet file")
-        print(f"[LABELING PIPELINE]   Rows: {len(df)}")
-        print(f"[LABELING PIPELINE]   Columns: {len(df.columns)}")
-        print(f"[LABELING PIPELINE]   Column names: {df.columns.tolist()}")
         schema_info = str(df.info())
-        print("="*80 + "\n")
     except Exception as e:
-        print(f"\n[LABELING PIPELINE ERROR] Failed to load raw data: {e}")
-        import traceback
-        traceback.print_exc()
-        print("="*80 + "\n")
         return ""
         
     # --- The Self-Correcting Loop ---
