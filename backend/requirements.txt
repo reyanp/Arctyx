@@ -1,0 +1,13 @@
+numpy
+pandas
+scipy
+scikit-learn
+transformers
+torch
+snorkel
+matplotlib
+seaborn
+python-dotenv
+langchain-nvidia-ai-endpoints
+langchain
+langchain-core
