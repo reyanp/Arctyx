@@ -43,21 +43,35 @@ app = FastAPI(title="DataFoundry Orchestrator")
 
 # Wrap our pipeline functions as LangChain tools
 @tool
-def label_dataset(user_goal: str, raw_data_path: str, hand_labeled_examples_path: str, 
+def label_dataset(user_goal: str, raw_data_path: str, hand_labeled_examples_path: str = "", 
                    target_auc_score: float = 0.75, max_attempts: int = 2) -> str:
     """
-    Label an unlabeled dataset using weak supervision.
+    Label an unlabeled dataset using weak supervision. 
+    
+    **IMPORTANT**: Only use this tool if the user EXPLICITLY requests weak supervision labeling.
+    Most workflows should skip this and go directly to train_model instead.
     
     Args:
         user_goal: Natural language description of the labeling goal
         raw_data_path: Path to unlabeled parquet file
-        hand_labeled_examples_path: Path to ground truth parquet file
+        hand_labeled_examples_path: Path to ground truth parquet file (REQUIRED for evaluation)
         target_auc_score: Target AUC score (default 0.75)
         max_attempts: Maximum attempts (default 2)
     
     Returns:
-        Path to the labeled parquet file
+        Path to the labeled parquet file, or empty string if labeling fails
     """
+    print("\n" + "="*80)
+    print("[ORCHESTRATOR TOOL] label_dataset called")
+    print("="*80)
+    print(f"[ORCHESTRATOR] user_goal: {user_goal}")
+    print(f"[ORCHESTRATOR] raw_data_path: {raw_data_path}")
+    print(f"[ORCHESTRATOR] raw_data_path type: {type(raw_data_path)}")
+    print(f"[ORCHESTRATOR] hand_labeled_examples_path: {hand_labeled_examples_path}")
+    print(f"[ORCHESTRATOR] target_auc_score: {target_auc_score}")
+    print(f"[ORCHESTRATOR] max_attempts: {max_attempts}")
+    print("="*80 + "\n")
+    
     return run_labeling_pipeline(
         user_goal=user_goal,
         raw_data_path=raw_data_path,
@@ -68,31 +82,55 @@ def label_dataset(user_goal: str, raw_data_path: str, hand_labeled_examples_path
 
 
 @tool
-def train_model(labeled_data_path: str, holdout_test_path: str,
+def train_model(labeled_data_path: str, holdout_test_path: str = "",
                 target_utility_pct: float = 0.85, max_attempts: int = 2) -> dict:
     """
     Train a generative model on labeled data.
     
     Args:
-        labeled_data_path: Path to labeled parquet file
-        holdout_test_path: Path to holdout test parquet file
+        labeled_data_path: Path to labeled parquet file (REQUIRED)
+        holdout_test_path: Path to holdout test parquet file (optional, defaults to empty for no testing)
         target_utility_pct: Target utility percentage (default 0.85)
         max_attempts: Maximum attempts (default 2)
     
     Returns:
         Dictionary with keys: config_path, model_path, preprocessor_path
     """
+    print("\n" + "="*80)
+    print("[ORCHESTRATOR TOOL] train_model called")
+    print("="*80)
+    print(f"[TRAIN] labeled_data_path: {labeled_data_path}")
+    print(f"[TRAIN] labeled_data_path type: {type(labeled_data_path)}")
+    print(f"[TRAIN] labeled_data_path length: {len(labeled_data_path)}")
+    print(f"[TRAIN] holdout_test_path: {holdout_test_path}")
+    print(f"[TRAIN] holdout_test_path type: {type(holdout_test_path)}")
+    print(f"[TRAIN] target_utility_pct: {target_utility_pct}")
+    print(f"[TRAIN] max_attempts: {max_attempts}")
+    print("="*80 + "\n")
+    
+    if not labeled_data_path:
+        error_msg = "ERROR: labeled_data_path is empty! Cannot proceed with training."
+        print(error_msg)
+        return error_msg
+    
     config_path, model_path, preprocessor_path = run_training_pipeline(
         labeled_data_path=labeled_data_path,
         holdout_test_path=holdout_test_path,
         target_utility_pct=target_utility_pct,
         max_attempts=max_attempts
     )
-    return {
-        "config_path": config_path,
-        "model_path": model_path,
-        "preprocessor_path": preprocessor_path
-    }
+    
+    print(f"\n[TRAIN] Training complete:")
+    print(f"[TRAIN]   config_path: {config_path}")
+    print(f"[TRAIN]   model_path: {model_path}")
+    print(f"[TRAIN]   preprocessor_path: {preprocessor_path}")
+    print("="*80 + "\n")
+    
+    return (
+        f"config_path: {config_path}\n"
+        f"model_path: {model_path}\n"
+        f"preprocessor_path: {preprocessor_path}"
+    )
 
 
 @tool
@@ -113,7 +151,26 @@ def generate_synthetic_data(config_path: str, model_path: str, preprocessor_path
     Returns:
         Path to generated synthetic data file
     """
-    return run_generation_pipeline(
+    print("\n" + "="*80)
+    print("[ORCHESTRATOR TOOL] generate_synthetic_data called")
+    print("="*80)
+    print(f"[GENERATE] config_path: {config_path}")
+    print(f"[GENERATE] model_path: {model_path}")
+    print(f"[GENERATE] preprocessor_path: {preprocessor_path}")
+    print(f"[GENERATE] label: {label}")
+    print(f"[GENERATE] num_to_generate: {num_to_generate}")
+    print(f"[GENERATE] output_format: {output_format}")
+    print("="*80 + "\n")
+    
+    if not all([config_path, model_path, preprocessor_path]):
+        error_msg = (
+            "ERROR: Missing required paths for generation! "
+            f"config={config_path}, model={model_path}, preprocessor={preprocessor_path}"
+        )
+        print(error_msg)
+        return error_msg
+    
+    result = run_generation_pipeline(
         config_path=config_path,
         model_path=model_path,
         preprocessor_path=preprocessor_path,
@@ -121,6 +178,12 @@ def generate_synthetic_data(config_path: str, model_path: str, preprocessor_path
         num_to_generate=num_to_generate,
         output_format=output_format
     )
+    
+    print(f"\n[GENERATE] Generation complete:")
+    print(f"[GENERATE]   output_path: {result}")
+    print("="*80 + "\n")
+    
+    return f"synthetic_output_path: {result}"
 
 
 @tool
@@ -159,38 +222,63 @@ Your job is to take a high-level, natural-language user goal and break it down
 into a step-by-step execution plan using your available tools.
 
 Available tools:
-- label_dataset: Label unlabeled data using weak supervision
-- train_model: Train a generative model on labeled data
+- label_dataset: Label unlabeled data using weak supervision (ONLY use if explicitly requested)
+- train_model: Train a generative model on data with existing labels
 - generate_synthetic_data: Generate synthetic data from a trained model
 - detect_anomalies: Find anomalies in a dataset using a trained model
 
-CRITICAL INSTRUCTIONS:
-1. You MUST carefully manage the file paths and dependencies between steps.
-2. When you call tools, extract the file paths from their return values.
-3. At the end, you MUST return file paths in your response using these EXACT patterns:
-   - For labeling: "labeled_output_path: /path/to/file.parquet"
+CRITICAL WORKFLOW RULES:
+1. **DEFAULT WORKFLOW** (99% of requests): SKIP labeling entirely!
+   - Users provide data that ALREADY HAS labels or condition columns
+   - Go DIRECTLY to: train_model → generate_synthetic_data → STOP
+   
+2. **ONLY use label_dataset if**:
+   - User explicitly says "use weak supervision" or "create labeling functions"
+   - User says "I need to label my unlabeled data"
+   - User provides a hand_labeled_examples_path parameter
+   
+3. **NEVER use label_dataset if**:
+   - User just says "generate synthetic data" (this means use existing labels!)
+   - User says "generate a label/condition" (this means train on existing column!)
+   - No hand_labeled_examples_path is provided
+   - User wants to "create synthetic samples" (this is generation, not labeling!)
+
+4. When calling tools, extract file paths from their return values
+5. Pass file paths between tools (e.g., training output → generation input)
+6. After completing the workflow, STOP and report the results
+7. At the end, you MUST return file paths using these EXACT patterns:
    - For training: "config_path: /path/to/config.json" and "model_path: /path/to/model.pth" and "preprocessor_path: /path/to/preprocessor.joblib"
    - For generation: "synthetic_output_path: /path/to/synthetic.csv"
-   - For anomaly: "anomaly_report_path: /path/to/report.parquet"
 
-Example response format:
-"I have completed the labeling task. labeled_output_path: /tmp/labeled_data.parquet"
+MANDATORY WORKFLOW (ALWAYS follow this):
+1. FIRST: Call train_model with the provided dataset_path as labeled_data_path
+   - This will return config_path, model_path, preprocessor_path
+2. SECOND: Call generate_synthetic_data with the paths from train_model output
+   - Use the config_path, model_path, preprocessor_path returned from training
+3. THIRD: STOP and report results with file paths
 
-Or for multi-step:
-"I have completed all steps:
-labeled_data_path: /tmp/labeled.parquet
-config_path: /tmp/config.json  
+DO NOT skip training! Training is REQUIRED first!
+DO NOT call generate_synthetic_data without training first!
+DO NOT repeatedly call the same tool. If a tool succeeds, move to the next step.
+DO NOT try to fix errors by retrying - report the error and stop.
+DO NOT use label_dataset unless the user EXPLICITLY requests weak supervision labeling.
+
+Example response:
+"I have trained the model and generated synthetic data:
+config_path: /tmp/config.json
 model_path: /tmp/model.pth
 preprocessor_path: /tmp/preprocessor.joblib
-synthetic_data_path: /tmp/synthetic.csv"
+synthetic_output_path: /tmp/synthetic.csv"
 
-Plan your steps, execute them one by one, and confirm the final output with the file paths."""
+Plan your steps, execute them ONCE each, and confirm the final output with the file paths."""
 
-# Create the ReAct agent with system prompt
+# Create the ReAct agent with system prompt and recursion limit
 tools = [label_dataset, train_model, generate_synthetic_data, detect_anomalies]
 
 # Wrap LLM with system prompt
 llm_with_prompt = llm.bind(system=SYSTEM_PROMPT)
+
+# Create agent with max iterations to prevent infinite loops
 agent = create_react_agent(llm_with_prompt, tools)
 
 
@@ -311,9 +399,81 @@ async def generate(request: GenerateRequest):
     - file_paths: Dictionary of file paths for each step
     - steps_completed: List of steps that were executed
     """
+    print("\n" + "="*80)
+    print("[ORCHESTRATOR ENDPOINT] /generate endpoint called")
+    print("="*80)
+    print(f"[ORCHESTRATOR] Received request:")
+    print(f"[ORCHESTRATOR] Input message length: {len(request.input_message)} chars")
+    print(f"[ORCHESTRATOR] Input message preview: {request.input_message[:200]}...")
+    print(f"[ORCHESTRATOR] Full input message:\n{request.input_message}")
+    print("="*80 + "\n")
+    
     try:
-        # Run the agent
-        result = await agent.ainvoke({"messages": [("user", request.input_message)]})
+        # Strict fallback: If a dataset path is provided, run training -> generation programmatically
+        # This prevents the LLM from looping or skipping required steps
+        ds_match = re.search(r"Dataset path:\s*(.+)", request.input_message)
+        if ds_match:
+            ds_path = ds_match.group(1).strip()
+            if os.path.exists(ds_path):
+                # Extract number of samples to generate (default 100)
+                num_match = re.search(r"(\d+)\s+(?:sample|samples)", request.input_message, re.IGNORECASE)
+                num_to_generate = int(num_match.group(1)) if num_match else 100
+                # Default label if not specified
+                label = 1.0
+
+                print(f"[STRICT MODE] Detected dataset path: {ds_path}")
+                print(f"[STRICT MODE] num_to_generate: {num_to_generate}, label: {label}")
+
+                # Step 1: Train model (skip evaluation if no holdout provided)
+                config_path, model_path, preprocessor_path = run_training_pipeline(
+                    labeled_data_path=ds_path,
+                    holdout_test_path="",
+                    target_utility_pct=0.85,
+                    max_attempts=2
+                )
+
+                if all([config_path, model_path, preprocessor_path]) and os.path.exists(model_path):
+                    # Step 2: Generate synthetic data (CSV by default for frontend usability)
+                    synth_path = run_generation_pipeline(
+                        config_path=config_path,
+                        model_path=model_path,
+                        preprocessor_path=preprocessor_path,
+                        label=label,
+                        num_to_generate=num_to_generate,
+                        output_format="csv"
+                    )
+
+                    final_message = (
+                        "I have trained the model and generated synthetic data:\n"
+                        f"config_path: {config_path}\n"
+                        f"model_path: {model_path}\n"
+                        f"preprocessor_path: {preprocessor_path}\n"
+                        f"synthetic_output_path: {synth_path}"
+                    )
+
+                    file_paths = {
+                        "labeled_output_path": None,
+                        "config_path": config_path,
+                        "model_path": model_path,
+                        "preprocessor_path": preprocessor_path,
+                        "synthetic_output_path": synth_path,
+                        "anomaly_report_path": None,
+                    }
+                    steps_completed = ["training", "generation"]
+
+                    return GenerateResponse(
+                        output=final_message,
+                        file_paths=file_paths,
+                        steps_completed=steps_completed,
+                    )
+                else:
+                    print("[STRICT MODE] Training failed to produce required artifacts; falling back to agent.")
+
+        # Run the agent with recursion limit to prevent infinite loops
+        result = await agent.ainvoke(
+            {"messages": [("user", request.input_message)]},
+            config={"recursion_limit": 15}  # Limit to 15 steps max
+        )
         
         # Extract the final response
         messages = result.get("messages", [])
@@ -386,9 +546,26 @@ async def generate(request: GenerateRequest):
             steps_completed=steps_completed
         )
     
-    except Exception as e:
+    except RecursionError as e:
         return GenerateResponse(
-            output=f"Error: {str(e)}",
+            output="Error: Agent exceeded maximum steps (recursion limit). The workflow was too complex or the agent got stuck in a loop. Try simplifying your request or use Manual Mode for fine-grained control.",
+            file_paths={
+                "labeled_output_path": None,
+                "config_path": None,
+                "model_path": None,
+                "preprocessor_path": None,
+                "synthetic_output_path": None,
+                "anomaly_report_path": None
+            },
+            steps_completed=[]
+        )
+    except Exception as e:
+        error_msg = str(e)
+        if "recursion" in error_msg.lower():
+            error_msg = "Agent exceeded maximum steps. Try simplifying your request or use Manual Mode."
+        
+        return GenerateResponse(
+            output=f"Error: {error_msg}",
             file_paths={
                 "labeled_output_path": None,
                 "config_path": None,

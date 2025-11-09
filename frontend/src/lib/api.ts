@@ -32,14 +32,18 @@ export interface HealthResponse {
     data_generation: boolean;
     anomaly_detection: boolean;
     agent_pipelines: boolean;
+    orchestrator?: boolean;
   };
 }
 
 export interface UploadFileResponse {
-  file_path: string;
+  success: boolean;
+  file_path: string;  // Absolute path (preferred for API use)
+  relative_path: string;  // Relative path (for display)
   filename: string;
   original_filename: string;
   size_bytes: number;
+  message: string;
 }
 
 export interface DatasetInfoResponse {
@@ -66,8 +70,6 @@ export interface CreateLabelsResponse {
   success: boolean;
   message: string;
   output_path: string;
-  num_samples: number;
-  label_distribution: Record<string, number>;
 }
 
 export interface TrainingParams {
@@ -150,6 +152,54 @@ export interface FileListResponse {
   directories: string[];
 }
 
+export interface ConvertToCsvRequest {
+  parquet_path: string;
+  output_path?: string;
+}
+
+export interface ConvertToCsvResponse {
+  success: boolean;
+  csv_path: string;
+  num_rows: number;
+  num_columns: number;
+  columns: string[];
+  message: string;
+}
+
+export interface ConvertToParquetRequest {
+  csv_path: string;
+  output_path?: string;
+}
+
+export interface ConvertToParquetResponse {
+  success: boolean;
+  parquet_path: string;
+  num_rows: number;
+  num_columns: number;
+  columns: string[];
+  message: string;
+}
+
+export interface AgentGenerateRequest {
+  input_message: string;
+  dataset_path?: string;
+}
+
+export interface AgentGenerateResponse {
+  output: string;
+  file_paths: {
+    labeled_output_path: string | null;
+    config_path: string | null;
+    model_path: string | null;
+    preprocessor_path: string | null;
+    synthetic_output_path: string | null;
+    anomaly_report_path: string | null;
+  };
+  steps_completed: string[];
+  error?: string;
+  message?: string;
+}
+
 // ============================================================================
 // API Helper Functions
 // ============================================================================
@@ -172,7 +222,18 @@ async function apiFetch<T = any>(
       },
     });
 
-    const data = await response.json();
+    // Get response text first for better error debugging
+    const responseText = await response.text();
+    
+    // Try to parse as JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse JSON response:', responseText);
+      console.error('Parse error:', parseError);
+      throw new Error(`Invalid JSON response from ${endpoint}: ${parseError}`);
+    }
 
     // Check for API errors
     if (data.error) {
@@ -377,6 +438,42 @@ export async function downloadFile(filePath: string): Promise<Blob> {
   }
   
   return response.blob();
+}
+
+/**
+ * Convert a Parquet file to CSV format
+ */
+export async function convertToCsv(
+  request: ConvertToCsvRequest
+): Promise<ConvertToCsvResponse> {
+  return apiFetch<ConvertToCsvResponse>('/api/files/convert-to-csv', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * Convert a CSV file to Parquet format
+ */
+export async function convertToParquet(
+  request: ConvertToParquetRequest
+): Promise<ConvertToParquetResponse> {
+  return apiFetch<ConvertToParquetResponse>('/api/files/convert-to-parquet', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * Run the agent orchestrator with natural language input
+ */
+export async function runAgentGenerate(
+  request: AgentGenerateRequest
+): Promise<AgentGenerateResponse> {
+  return apiFetch<AgentGenerateResponse>('/api/agent/generate', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
 }
 
 // ============================================================================

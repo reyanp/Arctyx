@@ -4,10 +4,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { NavBar } from "@/components/ui/tubelight-navbar";
-import { Database, Upload, BarChart3, Download, BookOpen } from "lucide-react";
+import { Database, Upload, Download, BookOpen } from "lucide-react";
 import Index from "./pages/Index";
 import Schema from "./pages/Schema";
-import Results from "./pages/Results";
 import Export from "./pages/Export";
 import LearningHub from "./pages/LearningHub";
 import NotFound from "./pages/NotFound";
@@ -29,7 +28,6 @@ function ScrollToTop() {
 const navItems = [
   { name: 'Upload', url: '/', icon: Upload },
   { name: 'Schema', url: '/schema', icon: Database },
-  { name: 'Results', url: '/results', icon: BarChart3 },
   { name: 'Export', url: '/export', icon: Download },
   { name: 'Learn', url: '/learn', icon: BookOpen },
 ];
@@ -46,7 +44,6 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/schema" element={<Schema />} />
-              <Route path="/results" element={<Results />} />
               <Route path="/export" element={<Export />} />
               <Route path="/learn" element={<LearningHub />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

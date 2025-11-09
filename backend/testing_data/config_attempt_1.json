@@ -1,0 +1,81 @@
+{
+  "data_path": "/home/reyan/Documents/HackUTDNVIDIA/backend/testing_data/adult_agent.parquet",
+  "output_model_path": "/home/reyan/Documents/HackUTDNVIDIA/backend/testing_data/model_attempt_1.pth",
+  "preprocessor_path": "/home/reyan/Documents/HackUTDNVIDIA/backend/testing_data/preprocessor_attempt_1.joblib",
+  "model_params": {
+    "model_template": "mixed_data_cvae.py",
+    "model_class_name": "MixedDataCVAE",
+    "latent_dim": 64,
+    "condition_dim": 1,
+    "encoder_hidden_layers": [
+      128,
+      64
+    ],
+    "decoder_hidden_layers": [
+      64,
+      128
+    ],
+    "feature_cols": {
+      "numerical_cols": [
+        "age",
+        "fnlwgt",
+        "education.num",
+        "capital.gain",
+        "capital.loss"
+      ],
+      "categorical_cols": [
+        "workclass",
+        "education",
+        "marital.status",
+        "occupation",
+        "relationship",
+        "race",
+        "sex",
+        "native.country"
+      ]
+    },
+    "condition_cols": [
+      "hours.per.week"
+    ],
+    "categorical_embed_dims": [
+      [
+        9,
+        4
+      ],
+      [
+        16,
+        8
+      ],
+      [
+        7,
+        4
+      ],
+      [
+        15,
+        7
+      ],
+      [
+        6,
+        4
+      ],
+      [
+        5,
+        4
+      ],
+      [
+        2,
+        4
+      ],
+      [
+        42,
+        8
+      ]
+    ],
+    "numerical_dim": 5
+  },
+  "training_params": {
+    "batch_size": 128,
+    "learning_rate": 0.001,
+    "epochs": 5
+  }
+}

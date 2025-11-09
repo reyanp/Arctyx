@@ -16,6 +16,8 @@ import {
   createTrainingConfig,
   trainModel,
   generateData,
+  convertToParquet,
+  runAgentGenerate,
   type LabelingFunction,
   type CreateConfigRequest,
   type TrainModelRequest,
@@ -49,6 +51,12 @@ type WorkflowStep = 'idle' | 'labeling' | 'config' | 'training' | 'generating' |
 export function WorkflowPanel() {
   const navigate = useNavigate();
   const { path: datasetPath } = useDatasetState();
+  
+  // Agent Mode state
+  const [agentMode, setAgentMode] = useState(false);
+  const [agentGoal, setAgentGoal] = useState('');
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentOutput, setAgentOutput] = useState<string | null>(null);
   
   // Workflow state
   const [currentStep, setCurrentStep] = useState<WorkflowStep>('idle');
@@ -115,14 +123,45 @@ def lf_professional(x):
       setSyntheticDataPath(data.output_path);
       setProgress(100);
       setCurrentStep('complete');
-      // Store results in sessionStorage for Results page
-      sessionStorage.setItem('latestGeneration', JSON.stringify({
+      
+      // Create generation record
+      const generationRecord = {
+        id: Date.now().toString(),
         syntheticDataPath: data.output_path,
         originalDataPath: datasetPath,
-        numSamples: data.num_generated, // Fixed: backend returns 'num_generated'
+        numSamples: data.num_generated,
         modelPath,
         configPath,
-      }));
+        timestamp: Date.now(),
+        skippedLabeling: skipLabeling, // Track if labeling was skipped
+      };
+      
+      // Store as latest generation
+      sessionStorage.setItem('latestGeneration', JSON.stringify(generationRecord));
+      
+      // Add to generation history
+      const historyKey = 'generationHistory';
+      const storedHistory = sessionStorage.getItem(historyKey);
+      let history = [];
+      
+      if (storedHistory) {
+        try {
+          history = JSON.parse(storedHistory);
+        } catch (error) {
+          console.error('Failed to parse generation history:', error);
+        }
+      }
+      
+      // Add new generation to the beginning of the array
+      history.unshift(generationRecord);
+      
+      // Keep only the last 10 generations
+      if (history.length > 10) {
+        history = history.slice(0, 10);
+      }
+      
+      // Save updated history
+      sessionStorage.setItem(historyKey, JSON.stringify(history));
     },
   });
 
@@ -137,51 +176,48 @@ def lf_professional(x):
       setErrorMessage(null);
       setProgress(0);
 
-      // Step 1: Labeling/Conversion
-      // Note: Training config requires Parquet format, so we always need to label or convert
-      setCurrentStep('labeling');
-      
-      let labelingFunctions: LabelingFunction[];
-      
+      let dataPathForTraining = datasetPath;
+
       if (skipLabeling) {
-        // Create 3 simple abstain functions (Snorkel requires at least 3)
-        // These don't actually label - they just convert CSV to Parquet format
-        labelingFunctions = [
-          {
-            name: 'lf_abstain_1',
-            code: `def lf_abstain_1(x):
-    """Abstain function 1 - no labeling"""
-    return -1`
-          },
-          {
-            name: 'lf_abstain_2',
-            code: `def lf_abstain_2(x):
-    """Abstain function 2 - no labeling"""
-    return -1`
-          },
-          {
-            name: 'lf_abstain_3',
-            code: `def lf_abstain_3(x):
-    """Abstain function 3 - no labeling"""
-    return -1`
-          }
-        ];
+        // Skip labeling entirely - just convert format if needed
+        // Training requires Parquet format, so check if we need to convert
+        if (datasetPath.endsWith('.csv')) {
+          setCurrentStep('labeling'); // Reuse labeling step for format conversion
+          setProgress(10);
+          
+          const conversionResult = await convertToParquet({
+            csv_path: datasetPath,
+            output_path: `output_data/converted_${Date.now()}.parquet`,
+          });
+          
+          dataPathForTraining = conversionResult.parquet_path;
+          setProgress(25);
+        } else {
+          // Already Parquet, use as-is
+          dataPathForTraining = datasetPath;
+          setProgress(25);
+        }
       } else {
+        // Step 1: Labeling with custom functions
+        setCurrentStep('labeling');
+        setProgress(0);
+        
         // Parse user-provided labeling functions
-        labelingFunctions = parseLabelingFunctions(labelingFunctionsCode);
+        const labelingFunctions = parseLabelingFunctions(labelingFunctionsCode);
         
         if (labelingFunctions.length === 0) {
           throw new Error('No valid labeling functions provided');
         }
-      }
 
-      const labelingResult = await labelingMutation.mutateAsync({
-        data_path: datasetPath,
-        output_path: `output_data/labeled_${Date.now()}.parquet`,
-        labeling_functions: labelingFunctions,
-      });
-      
-      const dataPathForTraining = labelingResult.output_path;
+        const labelingResult = await labelingMutation.mutateAsync({
+          data_path: datasetPath,
+          output_path: `output_data/labeled_${Date.now()}.parquet`,
+          labeling_functions: labelingFunctions,
+        });
+        
+        dataPathForTraining = labelingResult.output_path;
+        setProgress(25);
+      }
 
       // Step 2: Create training config
       setCurrentStep('config');
@@ -247,17 +283,228 @@ def lf_professional(x):
     return functions;
   };
 
+  // Run agent workflow
+  const runAgent = async () => {
+    if (!agentGoal.trim()) {
+      setErrorMessage('Please describe your goal');
+      return;
+    }
+
+    try {
+      setAgentRunning(true);
+      setErrorMessage(null);
+      setAgentOutput(null);
+
+      const response = await runAgentGenerate({
+        input_message: agentGoal,
+        dataset_path: datasetPath || undefined,
+      });
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      setAgentOutput(response.output);
+      
+      // Store results if synthetic data was generated
+      if (response.file_paths.synthetic_output_path && response.steps_completed.includes('generation')) {
+        const generationRecord = {
+          id: Date.now().toString(),
+          syntheticDataPath: response.file_paths.synthetic_output_path,
+          originalDataPath: datasetPath || '',
+          numSamples: 0, // Unknown from agent
+          modelPath: response.file_paths.model_path,
+          configPath: response.file_paths.config_path,
+          timestamp: Date.now(),
+          skippedLabeling: !response.steps_completed.includes('labeling'),
+          agentGenerated: true,
+        };
+        
+        sessionStorage.setItem('latestGeneration', JSON.stringify(generationRecord));
+        
+        // Add to history
+        const historyKey = 'generationHistory';
+        const storedHistory = sessionStorage.getItem(historyKey);
+        let history = [];
+        
+        if (storedHistory) {
+          try {
+            history = JSON.parse(storedHistory);
+          } catch (error) {
+            console.error('Failed to parse generation history:', error);
+          }
+        }
+        
+        history.unshift(generationRecord);
+        
+        if (history.length > 10) {
+          history = history.slice(0, 10);
+        }
+        
+        sessionStorage.setItem(historyKey, JSON.stringify(history));
+        
+        // Navigate to export after success
+        setTimeout(() => {
+          navigate('/export');
+        }, 2000);
+      }
+      
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Agent workflow failed');
+    } finally {
+      setAgentRunning(false);
+    }
+  };
+
   const isRunning = currentStep !== 'idle' && currentStep !== 'complete' && currentStep !== 'error';
   const isComplete = currentStep === 'complete';
   const hasError = currentStep === 'error';
 
   return (
-    <CardModern>
-      <CardModernHeader>
-        <CardModernTitle>Data Generation Workflow</CardModernTitle>
-      </CardModernHeader>
-      <CardModernContent>
-        <div className="space-y-6">
+    <div className="relative">
+      {/* Agent Mode Toggle Button */}
+      <div className="absolute -top-10 right-0 z-10">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setAgentMode(!agentMode)}
+          className="rounded-full px-4 border-teal-500 text-teal-600 hover:bg-teal-50 hover:text-teal-700"
+        >
+          {agentMode ? 'Manual Mode' : 'Agent Mode'}
+        </Button>
+      </div>
+
+      <CardModern>
+        <CardModernHeader>
+          <CardModernTitle>
+            {agentMode ? 'Agent Mode' : 'Data Generation Workflow'}
+          </CardModernTitle>
+        </CardModernHeader>
+        <CardModernContent>
+          {agentMode ? (
+            // AGENT MODE UI
+            <div className="space-y-6 py-4">
+              {!agentRunning && !agentOutput && (
+                <>
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Describe your goal and let Arctyx generate the workflow.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="agent-goal" className="text-sm font-medium">
+                      Your Goal
+                    </Label>
+                    <Textarea
+                      id="agent-goal"
+                      value={agentGoal}
+                      onChange={(e) => setAgentGoal(e.target.value)}
+                      placeholder="Example: Generate 1000 synthetic samples of high-income individuals using weak supervision labeling..."
+                      className="min-h-[200px] resize-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-3 pt-4">
+                    <Button 
+                      size="lg" 
+                      className="w-full bg-teal-600 hover:bg-teal-700"
+                      disabled={!agentGoal.trim() || !datasetPath}
+                      onClick={runAgent}
+                    >
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Run Agent
+                    </Button>
+                    
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setAgentMode(false)}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      Back to Manual Mode
+                    </Button>
+                  </div>
+
+                  {!datasetPath && (
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        Please upload a dataset first to use Agent Mode.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </>
+              )}
+
+              {/* Agent Running State */}
+              {agentRunning && (
+                <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                  <img
+                    src="/jensen-disc.png"
+                    alt="Processing"
+                    className="w-32 h-32 animate-slowspin"
+                  />
+                  <div className="text-center space-y-1">
+                    <p className="font-medium text-sm">
+                      🤖 Agent is orchestrating your workflow...
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      This may take a few minutes
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Agent Output */}
+              {agentOutput && (
+                <>
+                  <Alert className="border-green-500/50 bg-green-500/10">
+                    <Check className="h-4 w-4 text-green-500" />
+                    <AlertDescription className="text-green-700 dark:text-green-400">
+                      <div className="space-y-2">
+                        <p className="font-medium">Agent workflow completed!</p>
+                        <p className="text-xs whitespace-pre-wrap">{agentOutput}</p>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                  
+                  <div className="flex flex-col gap-3">
+                    <Button 
+                      size="lg" 
+                      onClick={() => navigate('/export')}
+                      className="w-full"
+                    >
+                      View Results
+                      <ChevronRight className="w-4 h-4 ml-2" />
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setAgentOutput(null);
+                        setAgentGoal('');
+                      }}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      Run Another Task
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {/* Error State */}
+              {errorMessage && !agentRunning && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{errorMessage}</AlertDescription>
+                </Alert>
+              )}
+            </div>
+          ) : (
+            // NORMAL WORKFLOW UI
+            <div className="space-y-6">
           {/* Workflow Progress */}
           {isRunning && (
             <div className="flex flex-col items-center justify-center py-8 space-y-4">
@@ -320,13 +567,13 @@ def lf_professional(x):
                     onCheckedChange={(checked) => setSkipLabeling(checked as boolean)}
                   />
                   <Label htmlFor="skip-labeling" className="text-sm cursor-pointer">
-                    Skip custom labeling (use existing labels or convert format only)
+                    Skip labeling (use existing data columns as conditions)
                   </Label>
                 </div>
                 <p className="text-xs text-muted-foreground pl-6">
                   {skipLabeling 
-                    ? "Data will be converted to required format without custom labels"
-                    : "Define custom labeling functions below"}
+                    ? "The model will use one of your existing columns as the condition variable. No Snorkel labeling will be performed."
+                    : "Define custom labeling functions to add weak supervision labels"}
                 </p>
 
                 {!skipLabeling && (
@@ -453,16 +700,18 @@ def lf_professional(x):
               <Button 
                 className="flex-1" 
                 size="lg" 
-                onClick={() => navigate('/results')}
+                onClick={() => navigate('/export')}
               >
-                View Results
+                Export Data
                 <ChevronRight className="w-4 h-4 ml-2" />
               </Button>
             )}
           </div>
         </div>
-      </CardModernContent>
-    </CardModern>
+          )}
+        </CardModernContent>
+      </CardModern>
+    </div>
   );
 }
 

@@ -1,5 +1,6 @@
 numpy
 pandas
+pyarrow
 scipy
 scikit-learn
 transformers
@@ -11,8 +12,12 @@ python-dotenv
 langchain-nvidia-ai-endpoints
 langchain
 langchain-core
+langgraph
 Flask
 flask-cors
 requests
 nvidia-nat[langchain]
 fastapi
+uvicorn
+pydantic
+joblib

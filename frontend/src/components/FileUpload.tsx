@@ -33,10 +33,13 @@ export function FileUpload() {
       // Reconstruct uploaded file info from stored path
       const fileName = path.split('/').pop() || '';
       setUploadedFile({
+        success: true,
         file_path: path,
+        relative_path: path, // Use path as relative if it's already relative
         filename: fileName,
         original_filename: fileName,
         size_bytes: 0, // Size not stored, but not critical
+        message: 'File loaded from session',
       });
     }
   }, [path, datasetInfo]);
@@ -213,18 +216,18 @@ export function FileUpload() {
                       {formatFileSize(uploadedFile.size_bytes)}
                     </p>
                   </div>
-                </div>
-                <Button
-                  onClick={handleClear}
-                  variant="ghost"
-                  size="sm"
-                  className="flex-shrink-0"
-                  title="Remove file"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
             </div>
-
+            <Button 
+                  onClick={handleClear}
+              variant="ghost" 
+                  size="sm"
+              className="flex-shrink-0"
+                  title="Remove file"
+            >
+                  <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
+          
             {/* Dataset Info */}
             {datasetInfo && (
               <div className="p-4 border rounded-lg bg-card">
@@ -292,14 +295,14 @@ export function FileUpload() {
 
             {/* Quick Actions */}
             <div className="pt-2">
-              <Button
+            <Button 
                 onClick={() => navigate('/schema')}
                 variant="default"
                 size="lg"
                 className="w-full"
-              >
+            >
                 Upload
-              </Button>
+            </Button>
             </div>
           </div>
         </div>

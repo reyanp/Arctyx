@@ -3,9 +3,15 @@ venv/
 *.pyc
 backend/uploaded_data/
 backend/output_data/*.parquet
+backend/output_data/models/
+backend/testing_data/*_agent.parquet
 .env.env
 .env
 !.env.example
 .venv/
-.env
 __pycache__/
+logs/
+*.log
+*.pid
+node_modules/
+dist/

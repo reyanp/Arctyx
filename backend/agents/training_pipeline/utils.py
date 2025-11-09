@@ -25,7 +25,7 @@ def evaluate_model_quality(
     config_path: str,
     model_path: str,
     preprocessor_path: str,
-    holdout_test_path: str
+    holdout_test_path: str = ""
 ) -> dict:
     """
     Evaluates model quality using reconstruction error on holdout data.
@@ -35,12 +35,23 @@ def evaluate_model_quality(
         config_path: Path to the model configuration JSON
         model_path: Path to the trained model
         preprocessor_path: Path to the preprocessor
-        holdout_test_path: Path to the holdout test data (real data)
+        holdout_test_path: Path to the holdout test data (real data). If empty, skips evaluation.
     
     Returns:
         Dictionary with 'reconstruction_error' and 'quality_score' (0-1, higher is better)
     """
     print("--- Running Model Quality Evaluation ---")
+    
+    # If no holdout test path provided, skip evaluation
+    if not holdout_test_path or holdout_test_path.strip() == "":
+        print("[EVALUATION] No holdout test path provided. Skipping evaluation.")
+        return {
+            "reconstruction_error": None,
+            "quality_score": 1.0,  # Default to perfect score if no test data
+            "skipped": True,
+            "message": "Evaluation skipped - no holdout test path provided"
+        }
+    
     try:
         # Load config
         with open(config_path, 'r') as f:
@@ -58,6 +69,7 @@ def evaluate_model_quality(
             print(f"Auto-calculated input_dim: {params['input_dim']} (numerical: {num_numerical}, categorical: {num_categorical})")
         
         # Load holdout test data
+        print(f"[EVALUATION] Loading holdout test data from: {holdout_test_path}")
         test_df = pd.read_parquet(holdout_test_path)
         print(f"Evaluating on {len(test_df)} holdout samples")
         

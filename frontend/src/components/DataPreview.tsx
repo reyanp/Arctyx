@@ -131,9 +131,20 @@ export function DataPreview() {
     );
   }
 
+  // Check if labeling was skipped
+  const latestGen = sessionStorage.getItem('latestGeneration');
+  const skippedLabeling = latestGen ? JSON.parse(latestGen).skippedLabeling : false;
+
+  // Filter out label columns if labeling was skipped
+  const filteredColumns = data.columns.filter(col => {
+    if (!skippedLabeling) return true; // Show all columns if labeling wasn't skipped
+    // Hide label-related columns when labeling was skipped
+    return !col.toLowerCase().includes('label');
+  });
+
   // Get columns to display (limit to first 8 for readability)
-  const columnsToShow = data.columns.slice(0, 8);
-  const hasMoreColumns = data.columns.length > 8;
+  const columnsToShow = filteredColumns.slice(0, 8);
+  const hasMoreColumns = filteredColumns.length > 8;
 
   return (
     <CardModern>
@@ -180,7 +191,7 @@ export function DataPreview() {
                     ))}
                     {hasMoreColumns && (
                       <TableHead className="bg-muted/50 text-muted-foreground">
-                        +{data.columns.length - 8} more
+                        +{filteredColumns.length - 8} more
                       </TableHead>
                     )}
                   </TableRow>
@@ -212,7 +223,7 @@ export function DataPreview() {
           <div className="flex items-center justify-between text-xs text-muted-foreground pt-2">
             <span>Showing first 5 of {data.num_rows.toLocaleString()} rows</span>
             {hasMoreColumns && (
-              <span>Showing first 8 of {data.num_columns} columns</span>
+              <span>Showing first 8 of {filteredColumns.length} columns</span>
             )}
           </div>
         </div>

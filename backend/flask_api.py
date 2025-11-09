@@ -68,6 +68,15 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
 @app.route('/health', methods=['GET'])
 def health_check():
     """Check if the API is running and show available features."""
+    # Check if orchestrator is running
+    orchestrator_available = False
+    try:
+        import requests
+        resp = requests.get('http://localhost:8000/health', timeout=2)
+        orchestrator_available = resp.status_code == 200
+    except:
+        pass
+    
     return jsonify({
         'status': 'healthy',
         'version': '1.0.0',
@@ -76,9 +85,333 @@ def health_check():
             'model_training': True,
             'data_generation': True,
             'anomaly_detection': True,
-            'agent_pipelines': AGENTS_AVAILABLE
+            'agent_pipelines': AGENTS_AVAILABLE,
+            'orchestrator': orchestrator_available
         }
     })
+
+
+@app.route('/api/agent/generate', methods=['POST'])
+def agent_generate():
+    """
+    Proxy endpoint to the orchestrator service.
+    Automatically converts CSV files to Parquet format for agent compatibility.
+    
+    Request body:
+    {
+        "input_message": "Generate 1000 samples of high-income individuals...",
+        "dataset_path": "path/to/dataset.csv"  // optional, auto-converted to Parquet if CSV
+    }
+    
+    Returns:
+    {
+        "output": "Natural language response from the agent",
+        "error": "Error message if workflow failed" // optional
+        "file_paths": {
+            "labeled_output_path": null,  // or string path if labeling was performed
+            "config_path": null,           // or string path if training was performed
+            "model_path": null,            // or string path if training was performed
+            "preprocessor_path": null,     // or string path if training was performed
+            "synthetic_output_path": null, // or string path if generation was performed
+            "anomaly_report_path": null    // or string path if anomaly detection was performed
+        },
+        "steps_completed": ["training", "generation"]  // list of completed steps
+    }
+    
+    All error cases return the same structure with null file paths and an error field.
+    """
+    try:
+        import requests
+        
+        data = request.get_json()
+        input_message = data.get('input_message')
+        dataset_path = data.get('dataset_path')
+        
+        if not input_message:
+            return jsonify({'error': 'Missing input_message'}), 400
+        
+        # Convert CSV to Parquet if needed (agent pipelines require Parquet)
+        if dataset_path:
+            print("\n" + "="*80)
+            print("[AGENT CSV CONVERSION] Starting conversion process")
+            print("="*80)
+            print(f"[AGENT] Received dataset_path from frontend: {dataset_path}")
+            print(f"[AGENT] Path is absolute: {os.path.isabs(dataset_path)}")
+            print(f"[AGENT] Backend directory: {backend_dir}")
+            
+            # Check if file is CSV
+            if dataset_path.lower().endswith('.csv'):
+                print(f"[AGENT] File extension is .csv, conversion needed")
+                
+                # Convert CSV to Parquet for agent
+                try:
+                    print(f"\n[AGENT CONVERSION STEP 1] Resolving path...")
+                    
+                    # Ensure we have the absolute path
+                    original_path = dataset_path
+                    if not os.path.isabs(dataset_path):
+                        # Strip 'backend/' prefix if present to avoid double backend/backend
+                        if dataset_path.startswith('backend/'):
+                            dataset_path = dataset_path[len('backend/'):]
+                            print(f"[AGENT] Stripped 'backend/' prefix: {original_path} -> {dataset_path}")
+                        
+                        dataset_path = os.path.join(backend_dir, dataset_path)
+                        print(f"[AGENT] Converted relative to absolute: {original_path} -> {dataset_path}")
+                    else:
+                        print(f"[AGENT] Path is already absolute: {dataset_path}")
+                    
+                    print(f"\n[AGENT CONVERSION STEP 2] Checking file existence...")
+                    print(f"[AGENT] CSV path: {dataset_path}")
+                    print(f"[AGENT] File exists: {os.path.exists(dataset_path)}")
+                    
+                    if not os.path.exists(dataset_path):
+                        error_msg = f"CSV file not found at: {dataset_path}"
+                        print(f"[AGENT ERROR] {error_msg}")
+                        return jsonify({
+                            'output': error_msg,
+                            'error': error_msg,
+                            'file_paths': {
+                                'labeled_output_path': None,
+                                'config_path': None,
+                                'model_path': None,
+                                'preprocessor_path': None,
+                                'synthetic_output_path': None,
+                                'anomaly_report_path': None
+                            },
+                            'steps_completed': []
+                        }), 400
+                    
+                    print(f"[AGENT] File size: {os.path.getsize(dataset_path)} bytes")
+                    
+                    print(f"\n[AGENT CONVERSION STEP 3] Reading CSV file...")
+                    # Read CSV
+                    df = pd.read_csv(dataset_path)
+                    print(f"[AGENT] ✓ CSV loaded successfully")
+                    print(f"[AGENT]   Rows: {len(df)}")
+                    print(f"[AGENT]   Columns: {len(df.columns)}")
+                    print(f"[AGENT]   Column names: {df.columns.tolist()}")
+                    print(f"[AGENT]   Memory usage: {df.memory_usage(deep=True).sum() / 1024:.2f} KB")
+                    
+                    print(f"\n[AGENT CONVERSION STEP 4] Preparing Parquet path...")
+                    # Create parquet path (same directory, add _agent suffix)
+                    parquet_path = dataset_path.rsplit('.csv', 1)[0] + '_agent.parquet'
+                    print(f"[AGENT] Target Parquet path: {parquet_path}")
+                    
+                    # Ensure directory exists
+                    parquet_dir = os.path.dirname(parquet_path)
+                    print(f"[AGENT] Target directory: {parquet_dir}")
+                    print(f"[AGENT] Directory exists: {os.path.exists(parquet_dir)}")
+                    
+                    if not os.path.exists(parquet_dir):
+                        os.makedirs(parquet_dir, exist_ok=True)
+                        print(f"[AGENT] Created directory: {parquet_dir}")
+                    
+                    print(f"\n[AGENT CONVERSION STEP 5] Writing Parquet file...")
+                    # Save as parquet with explicit engine
+                    df.to_parquet(parquet_path, index=False, engine='pyarrow')
+                    print(f"[AGENT] ✓ Parquet write command completed")
+                    
+                    print(f"\n[AGENT CONVERSION STEP 6] Verifying Parquet file...")
+                    if os.path.exists(parquet_path):
+                        file_size = os.path.getsize(parquet_path)
+                        print(f"[AGENT] ✓ Parquet file exists")
+                        print(f"[AGENT]   Path: {parquet_path}")
+                        print(f"[AGENT]   Size: {file_size} bytes")
+                        
+                        # Verify it's a valid parquet file by trying to read it
+                        print(f"[AGENT] Attempting to read back Parquet file for verification...")
+                        try:
+                            test_df = pd.read_parquet(parquet_path)
+                            print(f"[AGENT] ✓ Parquet file verified successfully")
+                            print(f"[AGENT]   Read {len(test_df)} rows, {len(test_df.columns)} columns")
+                            print(f"[AGENT]   Column names match: {test_df.columns.tolist() == df.columns.tolist()}")
+                        except Exception as verify_error:
+                            error_msg = f"Parquet file created but failed verification: {verify_error}"
+                            print(f"[AGENT ERROR] {error_msg}")
+                            import traceback
+                            traceback.print_exc()
+                            return jsonify({
+                                'output': error_msg,
+                                'error': error_msg,
+                                'file_paths': {
+                                    'labeled_output_path': None,
+                                    'config_path': None,
+                                    'model_path': None,
+                                    'preprocessor_path': None,
+                                    'synthetic_output_path': None,
+                                    'anomaly_report_path': None
+                                },
+                                'steps_completed': []
+                            }), 400
+                    else:
+                        error_msg = f"Parquet file not found after write: {parquet_path}"
+                        print(f"[AGENT ERROR] {error_msg}")
+                        return jsonify({
+                            'output': error_msg,
+                            'error': error_msg,
+                            'file_paths': {
+                                'labeled_output_path': None,
+                                'config_path': None,
+                                'model_path': None,
+                                'preprocessor_path': None,
+                                'synthetic_output_path': None,
+                                'anomaly_report_path': None
+                            },
+                            'steps_completed': []
+                        }), 400
+                    
+                    # Update dataset_path to use the parquet file
+                    dataset_path = parquet_path
+                    print(f"\n[AGENT] ✓ Conversion complete")
+                    print(f"[AGENT] Using Parquet file: {dataset_path}")
+                    print("="*80 + "\n")
+                    
+                except Exception as conv_error:
+                    error_msg = f'Failed to convert CSV to Parquet: {str(conv_error)}'
+                    print(f"\n[AGENT ERROR] {error_msg}")
+                    import traceback
+                    traceback.print_exc()
+                    print("="*80 + "\n")
+                    return jsonify({
+                        'output': error_msg,
+                        'error': error_msg,
+                        'file_paths': {
+                            'labeled_output_path': None,
+                            'config_path': None,
+                            'model_path': None,
+                            'preprocessor_path': None,
+                            'synthetic_output_path': None,
+                            'anomaly_report_path': None
+                        },
+                        'steps_completed': []
+                    }), 400
+            else:
+                print(f"[AGENT] File is not CSV (extension: {dataset_path.split('.')[-1]})")
+                print(f"[AGENT] Using original path: {dataset_path}")
+            
+            # Enhance the message with dataset path
+            print(f"\n[AGENT] Final dataset path to send to orchestrator: {dataset_path}")
+            print(f"[AGENT] File exists: {os.path.exists(dataset_path)}")
+            if os.path.exists(dataset_path):
+                print(f"[AGENT] File size: {os.path.getsize(dataset_path)} bytes")
+            input_message = f"{input_message}\n\nDataset path: {dataset_path}"
+        
+        # Call orchestrator
+        print("\n" + "="*80)
+        print("[AGENT] Calling orchestrator service")
+        print("="*80)
+        orchestrator_url = 'http://localhost:8000/generate'
+        print(f"[AGENT] Orchestrator URL: {orchestrator_url}")
+        print(f"[AGENT] Request payload:")
+        print(f"  - input_message length: {len(input_message)} chars")
+        print(f"  - input_message content:\n{input_message}")
+        print("="*80 + "\n")
+        
+        response = requests.post(
+            orchestrator_url,
+            json={'input_message': input_message},
+            timeout=300  # 5 minute timeout for long-running operations
+        )
+        
+        print("\n" + "="*80)
+        print("[AGENT] Orchestrator response received")
+        print("="*80)
+        print(f"[AGENT] Status code: {response.status_code}")
+        print(f"[AGENT] Response preview: {response.text[:500]}...")
+        print("="*80 + "\n")
+        
+        if response.status_code != 200:
+            return jsonify({
+                'output': f'Orchestrator error: {response.text}',
+                'error': 'Orchestrator returned an error',
+                'file_paths': {
+                    'labeled_output_path': None,
+                    'config_path': None,
+                    'model_path': None,
+                    'preprocessor_path': None,
+                    'synthetic_output_path': None,
+                    'anomaly_report_path': None
+                },
+                'steps_completed': []
+            }), response.status_code
+        
+        # Parse orchestrator response
+        result = response.json()
+        
+        # Log the orchestrator response for debugging
+        print(f"Orchestrator response: {result}")
+        
+        # Ensure response has all required fields
+        if 'output' not in result:
+            result['output'] = 'No output from orchestrator'
+        
+        if 'file_paths' not in result:
+            result['file_paths'] = {
+                'labeled_output_path': None,
+                'config_path': None,
+                'model_path': None,
+                'preprocessor_path': None,
+                'synthetic_output_path': None,
+                'anomaly_report_path': None
+            }
+        else:
+            # Ensure all file_path keys exist
+            for key in ['labeled_output_path', 'config_path', 'model_path', 
+                       'preprocessor_path', 'synthetic_output_path', 'anomaly_report_path']:
+                if key not in result['file_paths']:
+                    result['file_paths'][key] = None
+        
+        if 'steps_completed' not in result:
+            result['steps_completed'] = []
+        
+        # Check if there's an error in the output text
+        if 'error' in result.get('output', '').lower() or 'failed' in result.get('output', '').lower():
+            result['error'] = result['output']
+        
+        return jsonify(result)
+        
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            'output': 'Orchestrator service not available. Make sure the orchestrator is running on port 8000.',
+            'error': 'Orchestrator service not available',
+            'file_paths': {
+                'labeled_output_path': None,
+                'config_path': None,
+                'model_path': None,
+                'preprocessor_path': None,
+                'synthetic_output_path': None,
+                'anomaly_report_path': None
+            },
+            'steps_completed': []
+        }), 503
+    except requests.exceptions.Timeout:
+        return jsonify({
+            'output': 'Orchestrator request timed out. The operation took longer than 5 minutes.',
+            'error': 'Orchestrator request timed out',
+            'file_paths': {
+                'labeled_output_path': None,
+                'config_path': None,
+                'model_path': None,
+                'preprocessor_path': None,
+                'synthetic_output_path': None,
+                'anomaly_report_path': None
+            },
+            'steps_completed': []
+        }), 504
+    except Exception as e:
+        return jsonify({
+            'output': f'Error: {str(e)}',
+            'error': str(e),
+            'file_paths': {
+                'labeled_output_path': None,
+                'config_path': None,
+                'model_path': None,
+                'preprocessor_path': None,
+                'synthetic_output_path': None,
+                'anomaly_report_path': None
+            },
+            'steps_completed': []
+        }), 500
 
 
 @app.route('/api/upload', methods=['POST'])
@@ -186,13 +519,23 @@ def get_dataset_info():
             return jsonify({'error': 'Unsupported file format. Use .csv or .parquet'}), 400
         
         # Get info
+        # Convert sample data to dict and replace NaN with None for valid JSON
+        sample_records = df.head(5).to_dict(orient='records')
+        
+        # Replace NaN values with None (which becomes null in JSON)
+        import math
+        for record in sample_records:
+            for key, value in record.items():
+                if isinstance(value, float) and math.isnan(value):
+                    record[key] = None
+        
         info = {
             'num_rows': len(df),
             'num_columns': len(df.columns),
             'columns': df.columns.tolist(),
             'dtypes': df.dtypes.astype(str).to_dict(),
             'missing_values': df.isnull().sum().to_dict(),
-            'sample_data': df.head(5).to_dict(orient='records')
+            'sample_data': sample_records
         }
         
         return jsonify(info)
@@ -921,6 +1264,84 @@ def convert_to_csv():
             'num_columns': len(df.columns),
             'columns': df.columns.tolist(),
             'message': f'Successfully converted {len(df)} rows to CSV format'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
+@app.route('/api/files/convert-to-parquet', methods=['POST'])
+def convert_to_parquet():
+    """
+    Convert a CSV file to Parquet format.
+    
+    Request body:
+    {
+        "csv_path": "path/to/file.csv",
+        "output_path": "path/to/output.parquet"  // optional, defaults to same directory with .parquet extension
+    }
+    
+    Returns:
+    {
+        "success": true,
+        "parquet_path": "path/to/output.parquet",
+        "message": "Successfully converted CSV to Parquet"
+    }
+    """
+    try:
+        data = request.get_json()
+        csv_path = data.get('csv_path')
+        
+        if not csv_path:
+            return jsonify({'error': 'Missing required parameter: csv_path'}), 400
+        
+        if not os.path.exists(csv_path):
+            return jsonify({'error': f'CSV file not found: {csv_path}'}), 404
+        
+        if not csv_path.endswith('.csv'):
+            return jsonify({'error': 'File must be a .csv file'}), 400
+        
+        # Security: Validate input path is within allowed directories
+        csv_path = os.path.abspath(os.path.normpath(csv_path))
+        output_folder = os.path.abspath(app.config['OUTPUT_FOLDER'])
+        upload_folder = os.path.abspath(app.config['UPLOAD_FOLDER'])
+        testing_folder = os.path.abspath(backend_dir / "testing_data")
+        
+        if not (csv_path.startswith(output_folder) or csv_path.startswith(upload_folder) or csv_path.startswith(testing_folder)):
+            return jsonify({
+                'error': 'Input file path must be within OUTPUT_FOLDER, UPLOAD_FOLDER, or testing_data',
+                'allowed_folders': [output_folder, upload_folder, testing_folder]
+            }), 403
+        
+        # Determine output path
+        output_path = data.get('output_path')
+        if not output_path:
+            # Default: same directory, replace .csv with .parquet
+            output_path = csv_path.rsplit('.csv', 1)[0] + '.parquet'
+        else:
+            # Validate output path is also within allowed directories
+            output_path = os.path.abspath(os.path.normpath(output_path))
+            if not (output_path.startswith(output_folder) or output_path.startswith(upload_folder)):
+                return jsonify({
+                    'error': 'Output file path must be within OUTPUT_FOLDER or UPLOAD_FOLDER'
+                }), 403
+        
+        # Ensure output directory exists
+        output_dir = os.path.dirname(output_path)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+        
+        # Load CSV and convert to Parquet
+        df = pd.read_csv(csv_path)
+        df.to_parquet(output_path, index=False)
+        
+        return jsonify({
+            'success': True,
+            'parquet_path': output_path,
+            'num_rows': len(df),
+            'num_columns': len(df.columns),
+            'columns': df.columns.tolist(),
+            'message': f'Successfully converted {len(df)} rows to Parquet format'
         })
         
     except Exception as e:

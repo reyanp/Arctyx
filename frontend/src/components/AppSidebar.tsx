@@ -16,7 +16,6 @@ const navItems = [
   { title: "Upload Data", url: "/", icon: Upload },
   { title: "Schema", url: "/schema", icon: Database },
   { title: "Generate", url: "/generate", icon: BarChart3 },
-  { title: "Results", url: "/results", icon: BarChart3 },
   { title: "Export", url: "/export", icon: Download },
 ];
 

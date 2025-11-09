@@ -17,7 +17,6 @@ const getPageTitle = (pathname: string): string => {
     "/": "Dashboard",
     "/schema": "Schema",
     "/generate": "Generate",
-    "/results": "Results",
     "/export": "Export",
   }
   return routeMap[pathname] || "Dashboard"

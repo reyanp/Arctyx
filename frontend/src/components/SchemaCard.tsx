@@ -10,6 +10,17 @@ export function SchemaCard() {
   const { info, path, hasDataset } = useDatasetState();
   const navigate = useNavigate();
 
+  // Check if labeling was skipped in the last generation
+  const latestGen = sessionStorage.getItem('latestGeneration');
+  const skippedLabeling = latestGen ? JSON.parse(latestGen).skippedLabeling : false;
+
+  // Filter out label columns if labeling was skipped
+  const columnsToShow = info?.columns.filter(col => {
+    if (!skippedLabeling) return true; // Show all columns if labeling wasn't skipped
+    // Hide label-related columns when labeling was skipped
+    return !col.toLowerCase().includes('label');
+  }) || [];
+
   // If no dataset loaded, show message
   if (!hasDataset || !info) {
     return (
@@ -66,7 +77,7 @@ export function SchemaCard() {
         <div className="space-y-3 mb-6">
           <h4 className="text-sm font-medium">Columns</h4>
           <div className="max-h-[600px] overflow-y-auto space-y-2">
-            {info.columns.map((col) => {
+            {columnsToShow.map((col) => {
               const dtype = info.dtypes[col] || 'unknown';
               const missingCount = info.missing_values?.[col] || 0;
               const hasMissing = missingCount > 0;

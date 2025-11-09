@@ -1,16 +1,17 @@
 import { useState, useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { CardModern, CardModernHeader, CardModernTitle, CardModernContent } from "@/components/ui/card-modern";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { getFileDownloadUrl } from "@/lib/api";
+import { getFileDownloadUrl, convertToCsv } from "@/lib/api";
 import { 
   Download, 
   FileSpreadsheet, 
-  FileCode, 
   Settings,
   AlertCircle,
-  Package
+  Package,
+  Loader2
 } from "lucide-react";
 
 interface GenerationData {
@@ -35,9 +36,27 @@ export function ExportSection() {
     }
   }, []);
 
+  // CSV conversion mutation
+  const csvConversionMutation = useMutation({
+    mutationFn: convertToCsv,
+    onSuccess: (data) => {
+      // Download the converted CSV file
+      const downloadUrl = getFileDownloadUrl(data.csv_path);
+      window.open(downloadUrl, '_blank');
+    },
+  });
+
   const handleDownload = (filePath: string) => {
     const downloadUrl = getFileDownloadUrl(filePath);
     window.open(downloadUrl, '_blank');
+  };
+
+  const handleConvertToCsv = () => {
+    if (generationData?.syntheticDataPath) {
+      csvConversionMutation.mutate({
+        parquet_path: generationData.syntheticDataPath,
+      });
+    }
   };
 
   if (!generationData) {
@@ -77,7 +96,7 @@ export function ExportSection() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="font-medium">Synthetic Dataset</p>
+              <p className="font-medium">Synthetic Dataset</p>
                   <Badge variant="default" className="text-xs">Primary</Badge>
                 </div>
                 <p className="text-sm text-muted-foreground font-mono truncate">
@@ -95,10 +114,10 @@ export function ExportSection() {
               onClick={() => handleDownload(generationData.syntheticDataPath)}
               className="flex-shrink-0"
             >
-              <Download className="w-4 h-4 mr-2" />
-              Download
-            </Button>
-          </div>
+            <Download className="w-4 h-4 mr-2" />
+            Download
+          </Button>
+        </div>
 
           {/* Model Weights */}
           <div className="flex items-center justify-between p-4 border rounded-lg bg-card hover:bg-muted/20 transition-colors">
@@ -122,10 +141,10 @@ export function ExportSection() {
               onClick={() => handleDownload(generationData.modelPath)}
               className="flex-shrink-0"
             >
-              <Download className="w-4 h-4 mr-2" />
-              Download
-            </Button>
-          </div>
+            <Download className="w-4 h-4 mr-2" />
+            Download
+          </Button>
+        </div>
 
           {/* Config File */}
           <div className="flex items-center justify-between p-4 border rounded-lg bg-card hover:bg-muted/20 transition-colors">
@@ -149,44 +168,67 @@ export function ExportSection() {
               onClick={() => handleDownload(generationData.configPath)}
               className="flex-shrink-0"
             >
-              <Download className="w-4 h-4 mr-2" />
-              Download
-            </Button>
-          </div>
+            <Download className="w-4 h-4 mr-2" />
+            Download
+          </Button>
+        </div>
 
-          {/* Original Data Reference */}
-          <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+          {/* CSV Export */}
+          <div className="flex items-center justify-between p-4 border rounded-lg bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900">
             <div className="flex items-center gap-3 flex-1 min-w-0">
-              <div className="p-2 rounded-md bg-muted flex-shrink-0">
-                <FileCode className="w-5 h-5 text-muted-foreground" />
+              <div className="p-2 rounded-md bg-green-500/10 flex-shrink-0">
+                <FileSpreadsheet className="w-5 h-5 text-green-600 dark:text-green-400" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-muted-foreground">Original Dataset</p>
-                <p className="text-sm text-muted-foreground font-mono truncate">
-                  {getFileName(generationData.originalDataPath)}
+                <p className="font-medium text-green-900 dark:text-green-100">Export as CSV</p>
+                <p className="text-sm text-green-700 dark:text-green-300 truncate">
+                  Convert synthetic data to CSV format
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Source data used for training
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                  Universal format • Compatible with Excel & spreadsheets
                 </p>
               </div>
             </div>
             <Button 
-              variant="ghost" 
+              variant="outline" 
               size="sm"
-              onClick={() => handleDownload(generationData.originalDataPath)}
-              className="flex-shrink-0"
+              onClick={handleConvertToCsv}
+              disabled={csvConversionMutation.isPending}
+              className="flex-shrink-0 border-green-300 hover:bg-green-100 dark:hover:bg-green-900/50"
             >
-              <Download className="w-4 h-4 mr-2" />
-              Download
-            </Button>
+              {csvConversionMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Converting...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Download CSV
+                </>
+              )}
+          </Button>
           </div>
+
+          {/* CSV Conversion Error */}
+          {csvConversionMutation.isError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {csvConversionMutation.error instanceof Error 
+                  ? csvConversionMutation.error.message 
+                  : 'Failed to convert file to CSV'}
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         {/* Tips */}
         <div className="mt-6 p-4 bg-muted/20 rounded-lg">
           <h4 className="text-sm font-medium mb-2">💡 Export Tips</h4>
           <ul className="text-xs text-muted-foreground space-y-1">
-            <li>• Parquet files can be opened with pandas, Excel, or BI tools</li>
+            <li>• Parquet files are more efficient for large datasets</li>
+            <li>• CSV files are universally compatible with Excel and spreadsheets</li>
             <li>• Model weights can be reused to generate more samples</li>
             <li>• Configuration file contains all training parameters</li>
           </ul>

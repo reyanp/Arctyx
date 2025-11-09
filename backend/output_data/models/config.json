@@ -1,10 +1,10 @@
 {
-  "data_path": "output_data/labeled_1762700063211.parquet",
+  "data_path": "/home/reyan/Documents/HackUTDNVIDIA/backend/output_data/converted_1762711021598.parquet",
   "output_model_path": "output_data/models/model.pth",
   "preprocessor_path": "output_data/models/preprocessor.joblib",
   "model_params": {
-    "model_template": "tabular_cvae.py",
-    "model_class_name": "TabularCVAE",
+    "model_template": "mixed_data_cvae.py",
+    "model_class_name": "MixedDataCVAE",
     "latent_dim": 64,
     "condition_dim": 1,
     "encoder_hidden_layers": [
@@ -17,21 +17,32 @@
     ],
     "feature_cols": {
       "numerical_cols": [
-        "age",
-        "fnlwgt",
-        "education.num",
-        "capital.gain",
-        "capital.loss",
-        "hours.per.week"
+        "id",
+        "age"
+      ],
+      "categorical_cols": [
+        "name",
+        "is_manager"
       ]
     },
     "condition_cols": [
-      "label_probability"
-    ]
+      "salary"
+    ],
+    "categorical_embed_dims": [
+      [
+        5,
+        4
+      ],
+      [
+        2,
+        4
+      ]
+    ],
+    "numerical_dim": 2
   },
   "training_params": {
     "batch_size": 128,
     "learning_rate": 0.001,
-    "epochs": 3
+    "epochs": 5
   }
 }
