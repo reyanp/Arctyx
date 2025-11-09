@@ -10,9 +10,11 @@ Usage:
 
 import asyncio
 import os
+import re
 import sys
 import uvicorn
 from pathlib import Path
+from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -199,6 +201,104 @@ class GenerateRequest(BaseModel):
 
 class GenerateResponse(BaseModel):
     output: str
+    file_paths: Dict[str, Optional[str]]
+    steps_completed: List[str]
+
+
+def extract_file_paths_from_response(response_text: str) -> Dict[str, Optional[str]]:
+    """
+    Extract file paths from the agent's response text.
+    Looks for patterns like "key: /path/to/file" or "key: path/to/file"
+    """
+    file_paths = {
+        "labeled_output_path": None,
+        "config_path": None,
+        "model_path": None,
+        "preprocessor_path": None,
+        "synthetic_output_path": None,
+        "anomaly_report_path": None
+    }
+    
+    # Patterns to match various formats
+    patterns = {
+        "labeled_output_path": [
+            r"labeled_output_path:\s*([^\s\n]+)",
+            r"labeled_data_path:\s*([^\s\n]+)",
+            r"labeled.*?path:\s*([^\s\n]+)",
+        ],
+        "config_path": [
+            r"config_path:\s*([^\s\n]+)",
+            r"config.*?path:\s*([^\s\n]+)",
+        ],
+        "model_path": [
+            r"model_path:\s*([^\s\n]+)",
+            r"model.*?path:\s*([^\s\n]+)",
+        ],
+        "preprocessor_path": [
+            r"preprocessor_path:\s*([^\s\n]+)",
+            r"preprocessor.*?path:\s*([^\s\n]+)",
+        ],
+        "synthetic_output_path": [
+            r"synthetic_output_path:\s*([^\s\n]+)",
+            r"synthetic_data_path:\s*([^\s\n]+)",
+            r"synthetic.*?path:\s*([^\s\n]+)",
+        ],
+        "anomaly_report_path": [
+            r"anomaly_report_path:\s*([^\s\n]+)",
+            r"anomaly.*?path:\s*([^\s\n]+)",
+        ]
+    }
+    
+    for key, pattern_list in patterns.items():
+        for pattern in pattern_list:
+            match = re.search(pattern, response_text, re.IGNORECASE)
+            if match:
+                path = match.group(1).strip()
+                # Remove trailing punctuation that might have been captured
+                path = path.rstrip('.,;!?')
+                if path and os.path.exists(path):
+                    file_paths[key] = path
+                    break
+    
+    return file_paths
+
+
+def extract_steps_completed(response_text: str, agent_messages: List) -> List[str]:
+    """
+    Determine which steps were completed by examining tool calls in the agent's execution.
+    """
+    steps = []
+    
+    # Check agent messages for tool calls
+    for message in agent_messages:
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.get('name', '')
+                if tool_name == 'label_dataset':
+                    steps.append('labeling')
+                elif tool_name == 'train_model':
+                    steps.append('training')
+                elif tool_name == 'generate_synthetic_data':
+                    steps.append('generation')
+                elif tool_name == 'detect_anomalies':
+                    steps.append('anomaly_detection')
+    
+    # Also check response text for keywords
+    response_lower = response_text.lower()
+    if 'label' in response_lower and 'labeled' in response_lower:
+        if 'labeling' not in steps:
+            steps.append('labeling')
+    if 'train' in response_lower or 'model' in response_lower:
+        if 'training' not in steps:
+            steps.append('training')
+    if 'generat' in response_lower or 'synthetic' in response_lower:
+        if 'generation' not in steps:
+            steps.append('generation')
+    if 'anomal' in response_lower:
+        if 'anomaly_detection' not in steps:
+            steps.append('anomaly_detection')
+    
+    return list(set(steps))  # Remove duplicates
 
 
 @app.post("/generate", response_model=GenerateResponse)
@@ -206,19 +306,99 @@ async def generate(request: GenerateRequest):
     """
     Main endpoint that receives natural language instructions and runs the orchestrator.
     
-    Compatible with NAT's /generate endpoint format.
+    Returns structured JSON with:
+    - output: The natural language response from the agent
+    - file_paths: Dictionary of file paths for each step
+    - steps_completed: List of steps that were executed
     """
     try:
         # Run the agent
         result = await agent.ainvoke({"messages": [("user", request.input_message)]})
         
         # Extract the final response
-        final_message = result["messages"][-1].content
+        messages = result.get("messages", [])
+        final_message = messages[-1].content if messages else "No response generated"
         
-        return GenerateResponse(output=final_message)
+        # Extract file paths from tool return values in messages (most reliable)
+        file_paths = {}
+        steps_completed = []
+        
+        # Look through messages for tool return values
+        for i, message in enumerate(messages):
+            # Check if this is a tool message (contains tool return value)
+            if hasattr(message, 'content'):
+                content = message.content
+                
+                # If content is a string, it might be a file path from a tool
+                if isinstance(content, str) and os.path.exists(content):
+                    # This is likely a file path from label_dataset, generate_synthetic_data, or detect_anomalies
+                    if content.endswith('.parquet'):
+                        if 'labeled' in content.lower() or 'label' in content.lower():
+                            file_paths['labeled_output_path'] = content
+                            if 'labeling' not in steps_completed:
+                                steps_completed.append('labeling')
+                        elif 'anomaly' in content.lower():
+                            file_paths['anomaly_report_path'] = content
+                            if 'anomaly_detection' not in steps_completed:
+                                steps_completed.append('anomaly_detection')
+                    elif content.endswith('.csv'):
+                        file_paths['synthetic_output_path'] = content
+                        if 'generation' not in steps_completed:
+                            steps_completed.append('generation')
+                
+                # If content is a dict, it might be from train_model
+                elif isinstance(content, dict):
+                    if 'config_path' in content:
+                        file_paths['config_path'] = content.get('config_path')
+                        file_paths['model_path'] = content.get('model_path')
+                        file_paths['preprocessor_path'] = content.get('preprocessor_path')
+                        if 'training' not in steps_completed:
+                            steps_completed.append('training')
+        
+        # Also extract from response text as fallback (for paths not captured above)
+        text_paths = extract_file_paths_from_response(final_message)
+        for key, value in text_paths.items():
+            if value and (key not in file_paths or not file_paths[key]):
+                file_paths[key] = value
+        
+        # Also check response text for steps
+        text_steps = extract_steps_completed(final_message, messages)
+        for step in text_steps:
+            if step not in steps_completed:
+                steps_completed.append(step)
+        
+        # Ensure all expected file_path keys exist (set to None if missing)
+        expected_keys = {
+            "labeled_output_path": None,
+            "config_path": None,
+            "model_path": None,
+            "preprocessor_path": None,
+            "synthetic_output_path": None,
+            "anomaly_report_path": None
+        }
+        for key in expected_keys:
+            if key not in file_paths:
+                file_paths[key] = None
+        
+        return GenerateResponse(
+            output=final_message,
+            file_paths=file_paths,
+            steps_completed=steps_completed
+        )
     
     except Exception as e:
-        return GenerateResponse(output=f"Error: {str(e)}")
+        return GenerateResponse(
+            output=f"Error: {str(e)}",
+            file_paths={
+                "labeled_output_path": None,
+                "config_path": None,
+                "model_path": None,
+                "preprocessor_path": None,
+                "synthetic_output_path": None,
+                "anomaly_report_path": None
+            },
+            steps_completed=[]
+        )
 
 
 @app.get("/health")

@@ -129,6 +129,8 @@ def extract_path_from_response(response: dict, key_hints: list) -> str:
     """
     Extract a file path from NAT response by searching various possible locations.
     
+    Now supports the new structured format with 'file_paths' dictionary.
+    
     Args:
         response: Response dictionary from NAT server
         key_hints: List of possible key names to search for (e.g., ['labeled_output_path', 'output_path'])
@@ -139,7 +141,15 @@ def extract_path_from_response(response: dict, key_hints: list) -> str:
     
     # Try common response structures
     if isinstance(response, dict):
-        # Direct keys
+        # NEW: Check structured file_paths dictionary first (most reliable)
+        if "file_paths" in response and isinstance(response["file_paths"], dict):
+            for key in key_hints:
+                if key in response["file_paths"] and response["file_paths"][key]:
+                    path = response["file_paths"][key]
+                    if path and path != "None" and path.lower() != "null":
+                        return path
+        
+        # Direct keys (backward compatibility)
         for key in key_hints:
             if key in response and response[key]:
                 return response[key]
@@ -731,16 +741,25 @@ Return the path to the labeled output file."""
         try:
             # Call NAT server
             response = call_nat_workflow(user_message, timeout=300)
-            print(f"\nOrchestrator response: {json.dumps(response, indent=2)[:500]}...")
+            print(f"\nOrchestrator response received")
+            print(f"Response structure: {json.dumps(response, indent=2)[:800]}...")
             
-            # Extract labeled file path from response
+            # Validate new structured response format
+            if "file_paths" not in response:
+                print("⚠ Warning: Response missing 'file_paths' field (may be old format)")
+            else:
+                print(f"\n✓ Structured response format detected")
+                print(f"  File paths: {json.dumps(response.get('file_paths', {}), indent=4)}")
+                print(f"  Steps completed: {response.get('steps_completed', [])}")
+            
+            # Extract labeled file path from response (uses new file_paths structure)
             labeled_path = extract_path_from_response(
                 response, 
                 ['labeled_output_path', 'output_path', 'labeled_file_path', 'result_path']
             )
             
             if not labeled_path:
-                raise ValueError(f"Could not find labeled output path in response: {response}")
+                raise ValueError(f"Could not find labeled output path in response: {json.dumps(response, indent=2)[:500]}")
             
             if not os.path.exists(labeled_path):
                 raise FileNotFoundError(f"Labeled file not found at: {labeled_path}")
@@ -750,14 +769,22 @@ Return the path to the labeled output file."""
             assert 'label_probability' in df_labeled.columns, "Missing label_probability column"
             assert len(df_labeled) > 0, "Labeled data is empty"
             
+            # Validate steps_completed includes labeling
+            steps_completed = response.get('steps_completed', [])
+            if 'labeling' not in steps_completed:
+                print("⚠ Warning: 'labeling' not in steps_completed list")
+            
             print(f"\n✓ Orchestrator labeling task successful!")
             print(f"  - Labeled {len(df_labeled)} samples")
             print(f"  - Output: {labeled_path}")
+            print(f"  - Steps completed: {steps_completed}")
             
             self.test_results['orchestrator_single_labeling'] = {
                 'success': True,
                 'labeled_path': labeled_path,
-                'num_samples': len(df_labeled)
+                'num_samples': len(df_labeled),
+                'steps_completed': steps_completed,
+                'has_structured_response': 'file_paths' in response
             }
             return self.test_results['orchestrator_single_labeling']
             
@@ -844,14 +871,22 @@ DO NOT include any explanations or markdown formatting - ONLY return the JSON ob
             print(f"\nOrchestrator response received")
             print(f"Response preview: {json.dumps(response, indent=2)[:800]}...")
             
-            # Extract all required paths
+            # Validate new structured response format
+            if "file_paths" not in response:
+                print("⚠ Warning: Response missing 'file_paths' field (may be old format)")
+            else:
+                print(f"\n✓ Structured response format detected")
+                print(f"  File paths available: {list(response.get('file_paths', {}).keys())}")
+                print(f"  Steps completed: {response.get('steps_completed', [])}")
+            
+            # Extract all required paths using new structured format
             paths = {}
             required_keys = {
-                'labeled_data_path': ['labeled_data_path', 'labeled_output_path', 'labeled_file_path'],
+                'labeled_data_path': ['labeled_output_path', 'labeled_data_path', 'labeled_file_path'],
                 'config_path': ['config_path', 'model_config_path'],
                 'model_path': ['model_path', 'trained_model_path'],
                 'preprocessor_path': ['preprocessor_path', 'preproc_path'],
-                'synthetic_data_path': ['synthetic_data_path', 'synthetic_output_path', 'generated_data_path']
+                'synthetic_data_path': ['synthetic_output_path', 'synthetic_data_path', 'generated_data_path']
             }
             
             for key, hints in required_keys.items():
@@ -860,9 +895,18 @@ DO NOT include any explanations or markdown formatting - ONLY return the JSON ob
                     raise FileNotFoundError(
                         f"Required file '{key}' not found. "
                         f"Searched for: {hints}. "
-                        f"Response: {json.dumps(response)[:500]}"
+                        f"Response file_paths: {json.dumps(response.get('file_paths', {}), indent=2)}"
                     )
                 paths[key] = path
+            
+            # Validate steps_completed includes expected steps
+            steps_completed = response.get('steps_completed', [])
+            expected_steps = ['labeling', 'training', 'generation']
+            missing_steps = [step for step in expected_steps if step not in steps_completed]
+            if missing_steps:
+                print(f"⚠ Warning: Expected steps not in steps_completed: {missing_steps}")
+            else:
+                print(f"✓ All expected steps completed: {steps_completed}")
             
             # Validate each output
             df_labeled = pd.read_parquet(paths['labeled_data_path'])
@@ -879,13 +923,16 @@ DO NOT include any explanations or markdown formatting - ONLY return the JSON ob
             print(f"  - Labeled: {len(df_labeled)} samples → {os.path.basename(paths['labeled_data_path'])}")
             print(f"  - Trained: {model_type} model → {os.path.basename(paths['model_path'])}")
             print(f"  - Generated: {len(synthetic_df)} samples → {os.path.basename(paths['synthetic_data_path'])}")
+            print(f"  - Steps completed: {steps_completed}")
             
             self.test_results['orchestrator_multi_pipeline'] = {
                 'success': True,
                 **paths,
                 'num_labeled': len(df_labeled),
                 'model_type': model_type,
-                'num_generated': len(synthetic_df)
+                'num_generated': len(synthetic_df),
+                'steps_completed': steps_completed,
+                'has_structured_response': 'file_paths' in response
             }
             return self.test_results['orchestrator_multi_pipeline']
             

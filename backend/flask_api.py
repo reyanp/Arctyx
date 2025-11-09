@@ -397,11 +397,16 @@ def create_training_config():
         # Load data to infer schema
         df = pd.read_parquet(data_path)
         
-        # Infer columns
+        # Infer columns - separate numerical and categorical
+        all_cols = df.columns.tolist()
         numerical_cols = df.select_dtypes(include=['number']).columns.tolist()
         
-        # Remove label columns from features
-        label_cols = ['label', 'label_probability', 'income_binary']
+        # Categorical columns are non-numerical columns that aren't label columns
+        label_cols = ['label', 'label_probability', 'income_binary', 'income']
+        categorical_cols = [col for col in all_cols 
+                           if col not in numerical_cols and col not in label_cols]
+        
+        # Remove label columns from numerical features
         condition_col = None
         for col in label_cols:
             if col in numerical_cols:
@@ -410,8 +415,16 @@ def create_training_config():
                 break
         
         if not condition_col:
-            condition_col = numerical_cols[-1]  # Use last numerical column
-            numerical_cols = numerical_cols[:-1]
+            # Try to find label_probability or income_binary
+            if 'label_probability' in all_cols:
+                condition_col = 'label_probability'
+            elif 'income_binary' in all_cols:
+                condition_col = 'income_binary'
+            elif numerical_cols:
+                condition_col = numerical_cols[-1]  # Use last numerical column as fallback
+                numerical_cols = numerical_cols[:-1]
+            else:
+                return jsonify({'error': 'No suitable condition column found'}), 400
         
         # Map model type to template
         model_map = {
@@ -421,7 +434,42 @@ def create_training_config():
             'tabular_ctgan': ('tabular_ctgan.py', 'TabularCTGAN')
         }
         
-        model_template, model_class = model_map.get(model_type, ('tabular_cvae.py', 'TabularCVAE'))
+        # Auto-select model type if categorical columns exist but user didn't specify mixed_data_cvae
+        if categorical_cols and model_type != 'mixed_data_cvae':
+            # Automatically switch to MixedDataCVAE to handle categorical columns
+            model_template, model_class = model_map['mixed_data_cvae']
+            print(f"Note: Categorical columns detected. Automatically using MixedDataCVAE instead of {model_type}")
+        else:
+            model_template, model_class = model_map.get(model_type, ('tabular_cvae.py', 'TabularCVAE'))
+        
+        # Build feature_cols dict - include both numerical and categorical if they exist
+        feature_cols = {}
+        if numerical_cols:
+            feature_cols['numerical_cols'] = numerical_cols
+        if categorical_cols:
+            feature_cols['categorical_cols'] = categorical_cols
+        
+        # For MixedDataCVAE, we need categorical_embed_dims if categorical columns exist
+        model_params = {
+            'model_template': model_template,
+            'model_class_name': model_class,
+            'latent_dim': data.get('model_params', {}).get('latent_dim', 64),
+            'condition_dim': data.get('model_params', {}).get('condition_dim', 1),
+            'encoder_hidden_layers': data.get('model_params', {}).get('encoder_hidden_layers', [128, 64]),
+            'decoder_hidden_layers': data.get('model_params', {}).get('decoder_hidden_layers', [64, 128]),
+            'feature_cols': feature_cols,
+            'condition_cols': [condition_col]
+        }
+        
+        # If using MixedDataCVAE with categorical columns, calculate embedding dimensions
+        if model_class == 'MixedDataCVAE' and categorical_cols:
+            categorical_embed_dims = []
+            for col in categorical_cols:
+                n_categories = df[col].nunique()
+                embed_dim = min(8, max(4, n_categories // 2))  # Embedding dim between 4-8
+                categorical_embed_dims.append((n_categories, embed_dim))
+            model_params['categorical_embed_dims'] = categorical_embed_dims
+            model_params['numerical_dim'] = len(numerical_cols) if numerical_cols else 0
         
         # Build config
         os.makedirs(output_dir, exist_ok=True)
@@ -430,18 +478,7 @@ def create_training_config():
             'data_path': data_path,
             'output_model_path': os.path.join(output_dir, 'model.pth'),
             'preprocessor_path': os.path.join(output_dir, 'preprocessor.joblib'),
-            'model_params': {
-                'model_template': model_template,
-                'model_class_name': model_class,
-                'latent_dim': data.get('model_params', {}).get('latent_dim', 64),
-                'condition_dim': data.get('model_params', {}).get('condition_dim', 1),
-                'encoder_hidden_layers': data.get('model_params', {}).get('encoder_hidden_layers', [128, 64]),
-                'decoder_hidden_layers': data.get('model_params', {}).get('decoder_hidden_layers', [64, 128]),
-                'feature_cols': {
-                    'numerical_cols': numerical_cols
-                },
-                'condition_cols': [condition_col]
-            },
+            'model_params': model_params,
             'training_params': {
                 'batch_size': data.get('training_params', {}).get('batch_size', 128),
                 'learning_rate': data.get('training_params', {}).get('learning_rate', 0.001),
@@ -762,18 +799,114 @@ def download_file():
     Download a file.
     
     Query params:
-    - path: Path to the file to download
+    - path: Path to the file to download (must be within OUTPUT_FOLDER or UPLOAD_FOLDER)
     """
     try:
         file_path = request.args.get('path')
         
-        if not file_path or not os.path.exists(file_path):
+        if not file_path:
+            return jsonify({'error': 'Missing path parameter'}), 400
+        
+        # Convert to absolute path and resolve any .. or symlinks
+        file_path = os.path.abspath(os.path.normpath(file_path))
+        
+        # Security: Ensure file is within allowed directories
+        output_folder = os.path.abspath(app.config['OUTPUT_FOLDER'])
+        upload_folder = os.path.abspath(app.config['UPLOAD_FOLDER'])
+        
+        if not (file_path.startswith(output_folder) or file_path.startswith(upload_folder)):
+            return jsonify({
+                'error': 'File path must be within OUTPUT_FOLDER or UPLOAD_FOLDER',
+                'allowed_folders': [output_folder, upload_folder]
+            }), 403
+        
+        if not os.path.exists(file_path):
             return jsonify({'error': 'File not found'}), 404
+        
+        if not os.path.isfile(file_path):
+            return jsonify({'error': 'Path is not a file'}), 400
         
         return send_file(file_path, as_attachment=True)
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
+@app.route('/api/files/convert-to-csv', methods=['POST'])
+def convert_to_csv():
+    """
+    Convert a parquet file to CSV format.
+    
+    Request body:
+    {
+        "parquet_path": "path/to/file.parquet",
+        "output_path": "path/to/output.csv"  // optional, defaults to same directory with .csv extension
+    }
+    
+    Returns:
+    {
+        "success": true,
+        "csv_path": "path/to/output.csv",
+        "message": "Successfully converted parquet to CSV"
+    }
+    """
+    try:
+        data = request.get_json()
+        parquet_path = data.get('parquet_path')
+        
+        if not parquet_path:
+            return jsonify({'error': 'Missing required parameter: parquet_path'}), 400
+        
+        if not os.path.exists(parquet_path):
+            return jsonify({'error': f'Parquet file not found: {parquet_path}'}), 404
+        
+        if not parquet_path.endswith('.parquet'):
+            return jsonify({'error': 'File must be a .parquet file'}), 400
+        
+        # Security: Validate input path is within allowed directories
+        parquet_path = os.path.abspath(os.path.normpath(parquet_path))
+        output_folder = os.path.abspath(app.config['OUTPUT_FOLDER'])
+        upload_folder = os.path.abspath(app.config['UPLOAD_FOLDER'])
+        
+        if not (parquet_path.startswith(output_folder) or parquet_path.startswith(upload_folder)):
+            return jsonify({
+                'error': 'Input file path must be within OUTPUT_FOLDER or UPLOAD_FOLDER',
+                'allowed_folders': [output_folder, upload_folder]
+            }), 403
+        
+        # Determine output path
+        output_path = data.get('output_path')
+        if not output_path:
+            # Default: same directory, replace .parquet with .csv
+            output_path = parquet_path.rsplit('.parquet', 1)[0] + '.csv'
+        else:
+            # Validate output path is also within allowed directories
+            output_path = os.path.abspath(os.path.normpath(output_path))
+            if not (output_path.startswith(output_folder) or output_path.startswith(upload_folder)):
+                return jsonify({
+                    'error': 'Output file path must be within OUTPUT_FOLDER or UPLOAD_FOLDER'
+                }), 403
+        
+        # Ensure output directory exists
+        output_dir = os.path.dirname(output_path)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+        
+        # Load parquet and convert to CSV
+        df = pd.read_parquet(parquet_path)
+        df.to_csv(output_path, index=False)
+        
+        return jsonify({
+            'success': True,
+            'csv_path': output_path,
+            'num_rows': len(df),
+            'num_columns': len(df.columns),
+            'columns': df.columns.tolist(),
+            'message': f'Successfully converted {len(df)} rows to CSV format'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 
 # ============================================================================
@@ -823,6 +956,7 @@ if __name__ == '__main__':
   
   List Files:         GET  /api/files/list
   Download File:      GET  /api/files/download?path=<path>
+  Convert to CSV:     POST /api/files/convert-to-csv
 
 Press Ctrl+C to stop the server.
 ════════════════════════════════════════════════════════════════

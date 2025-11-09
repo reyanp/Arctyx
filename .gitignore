@@ -6,3 +6,6 @@ backend/output_data/*.parquet
 .env.env
 .env
 !.env.example
+.venv/
+.env
+__pycache__/
