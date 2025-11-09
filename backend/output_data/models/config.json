@@ -1,5 +1,5 @@
 {
-  "data_path": "output_data/labeled_1762697863369.parquet",
+  "data_path": "output_data/labeled_1762700063211.parquet",
   "output_model_path": "output_data/models/model.pth",
   "preprocessor_path": "output_data/models/preprocessor.joblib",
   "model_params": {
@@ -32,6 +32,6 @@
   "training_params": {
     "batch_size": 128,
     "learning_rate": 0.001,
-    "epochs": 5
+    "epochs": 3
   }
 }

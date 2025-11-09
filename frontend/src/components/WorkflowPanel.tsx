@@ -29,7 +29,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -261,17 +260,22 @@ def lf_professional(x):
         <div className="space-y-6">
           {/* Workflow Progress */}
           {isRunning && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">
-              {currentStep === 'labeling' && (skipLabeling ? '📋  Converting data format...' : '🏷️  Labeling data...')}
-              {currentStep === 'config' && '⚙️  Creating configuration...'}
-              {currentStep === 'training' && '🧠  Training model...'}
-              {currentStep === 'generating' && '✨  Generating synthetic data...'}
-                </span>
-                <span className="text-muted-foreground">{progress}%</span>
+            <div className="flex flex-col items-center justify-center py-8 space-y-4">
+              {/* Spinning Jensen Disc */}
+              <img
+                src="/jensen-disc.png"
+                alt="Processing"
+                className="w-32 h-32 animate-slowspin"
+              />
+              <div className="text-center space-y-1">
+                <p className="font-medium text-sm">
+                  {currentStep === 'labeling' && (skipLabeling ? '📋  Converting data format...' : '🏷️  Labeling data...')}
+                  {currentStep === 'config' && '⚙️  Creating configuration...'}
+                  {currentStep === 'training' && '🧠  Training model...'}
+                  {currentStep === 'generating' && '✨  Generating synthetic data...'}
+                </p>
+                <p className="text-xs text-muted-foreground">{progress}%</p>
               </div>
-              <Progress value={progress} className="h-2" />
             </div>
           )}
 
@@ -374,7 +378,7 @@ def lf_professional(x):
                     <Input
                       id="epochs"
                       type="number"
-                      min="10"
+                      min="3"
                       max="1000"
                       value={epochs}
                       onChange={(e) => setEpochs(parseInt(e.target.value) || 50)}
@@ -407,9 +411,9 @@ def lf_professional(x):
 
                   <div className="space-y-2">
                     <Label htmlFor="label-condition" className="text-sm">Label Condition</Label>
-                    <Select value={labelCondition.toString()} onValueChange={(v) => setLabelCondition(parseFloat(v))}>
+                    <Select value={labelCondition.toFixed(1)} onValueChange={(v) => setLabelCondition(parseFloat(v))}>
                       <SelectTrigger id="label-condition">
-                        <SelectValue />
+                        <SelectValue placeholder="Select label condition" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="1.0">Positive Class (1.0)</SelectItem>

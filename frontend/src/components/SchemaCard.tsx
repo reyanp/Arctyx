@@ -65,7 +65,7 @@ export function SchemaCard() {
         {/* Columns List */}
         <div className="space-y-3 mb-6">
           <h4 className="text-sm font-medium">Columns</h4>
-          <div className="max-h-[300px] overflow-y-auto space-y-2">
+          <div className="max-h-[600px] overflow-y-auto space-y-2">
             {info.columns.map((col) => {
               const dtype = info.dtypes[col] || 'unknown';
               const missingCount = info.missing_values?.[col] || 0;
