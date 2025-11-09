@@ -4,5 +4,5 @@ venv/
 backend/uploaded_data/
 backend/output_data/*.parquet
 .env.env
-.env.*
+.env
 !.env.example
