@@ -123,17 +123,27 @@ def agent_generate():
     try:
         import requests
         
+        print(f"\n{'='*80}")
+        print(f"FLASK API: /api/agent/generate REQUEST")
+        print(f"{'='*80}")
+        
         data = request.get_json()
         input_message = data.get('input_message')
         dataset_path = data.get('dataset_path')
         
+        print(f"Input message: {input_message[:200] if input_message else 'None'}...")
+        print(f"Dataset path: {dataset_path}")
+        
         if not input_message:
+            print("ERROR: Missing input_message")
             return jsonify({'error': 'Missing input_message'}), 400
         
         # Convert CSV to Parquet if needed (agent pipelines require Parquet)
         if dataset_path:
+            print(f"Checking file type...")
             # Check if file is CSV
             if dataset_path.lower().endswith('.csv'):
+                print(f"CSV file detected, converting to Parquet...")
                 # Convert CSV to Parquet for agent
                 try:
                     # Ensure we have the absolute path
@@ -164,8 +174,12 @@ def agent_generate():
                     # Read CSV
                     df = pd.read_csv(dataset_path)
                     
+                    print(f"  CSV loaded: {len(df)} rows, {len(df.columns)} columns")
+                    
                     # Create parquet path (same directory, add _agent suffix)
                     parquet_path = dataset_path.rsplit('.csv', 1)[0] + '_agent.parquet'
+                    
+                    print(f"  Converting to: {parquet_path}")
                     
                     # Ensure directory exists
                     parquet_dir = os.path.dirname(parquet_path)
@@ -175,10 +189,13 @@ def agent_generate():
                     # Save as parquet with explicit engine
                     df.to_parquet(parquet_path, index=False, engine='pyarrow')
                     
+                    print(f"  Parquet file created successfully")
+                    
                     # Verify it's a valid parquet file by trying to read it
                     if os.path.exists(parquet_path):
                         try:
                             test_df = pd.read_parquet(parquet_path)
+                            print(f"  Parquet file verified: {len(test_df)} rows")
                         except Exception as verify_error:
                             error_msg = f"Parquet file created but failed verification: {verify_error}"
                             return jsonify({
@@ -212,8 +229,13 @@ def agent_generate():
                     
                     # Update dataset_path to use the parquet file
                     dataset_path = parquet_path
+                    print(f"  Using parquet file: {dataset_path}")
                     
                 except Exception as conv_error:
+                    print(f"ERROR: Failed to convert CSV to Parquet: {conv_error}")
+                    import traceback
+                    traceback.print_exc()
+                    
                     error_msg = f'Failed to convert CSV to Parquet: {str(conv_error)}'
                     return jsonify({
                         'output': error_msg,
@@ -228,6 +250,8 @@ def agent_generate():
                         },
                         'steps_completed': []
                     }), 400
+            else:
+                print(f"  File is already Parquet or other format: {dataset_path}")
             
             # Enhance the message with dataset path
             input_message = f"{input_message}\n\nDataset path: {dataset_path}"
@@ -235,13 +259,21 @@ def agent_generate():
         # Call orchestrator
         orchestrator_url = 'http://localhost:8000/generate'
         
+        print(f"\nCalling orchestrator at {orchestrator_url}...")
+        print(f"Message to send: {input_message[:200]}...")
+        
         response = requests.post(
             orchestrator_url,
             json={'input_message': input_message},
             timeout=300  # 5 minute timeout for long-running operations
         )
         
+        print(f"Orchestrator response status: {response.status_code}")
+        
         if response.status_code != 200:
+            print(f"ERROR: Orchestrator returned non-200 status")
+            print(f"Response text: {response.text[:500]}")
+            
             return jsonify({
                 'output': f'Orchestrator error: {response.text}',
                 'error': 'Orchestrator returned an error',
@@ -258,6 +290,9 @@ def agent_generate():
         
         # Parse orchestrator response
         result = response.json()
+        
+        print(f"Orchestrator response keys: {list(result.keys())}")
+        print(f"Steps completed: {result.get('steps_completed', [])}")
         
         # Ensure response has all required fields
         if 'output' not in result:
@@ -286,9 +321,20 @@ def agent_generate():
         if 'error' in result.get('output', '').lower() or 'failed' in result.get('output', '').lower():
             result['error'] = result['output']
         
+        print(f"\n{'='*80}")
+        print("FLASK API: Returning response to frontend")
+        print(f"{'='*80}")
+        print(f"Has error: {'error' in result}")
+        print(f"Synthetic output: {result.get('file_paths', {}).get('synthetic_output_path')}")
+        print(f"{'='*80}\n")
+        
         return jsonify(result)
         
     except requests.exceptions.ConnectionError:
+        print(f"\n{'!'*80}")
+        print("ERROR: Cannot connect to orchestrator")
+        print(f"{'!'*80}\n")
+        
         return jsonify({
             'output': 'Orchestrator service not available. Make sure the orchestrator is running on port 8000.',
             'error': 'Orchestrator service not available',
@@ -303,6 +349,10 @@ def agent_generate():
             'steps_completed': []
         }), 503
     except requests.exceptions.Timeout:
+        print(f"\n{'!'*80}")
+        print("ERROR: Orchestrator request timed out")
+        print(f"{'!'*80}\n")
+        
         return jsonify({
             'output': 'Orchestrator request timed out. The operation took longer than 5 minutes.',
             'error': 'Orchestrator request timed out',
@@ -317,6 +367,14 @@ def agent_generate():
             'steps_completed': []
         }), 504
     except Exception as e:
+        print(f"\n{'!'*80}")
+        print("ERROR: Flask agent endpoint exception")
+        print(f"{'!'*80}")
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        print(f"{'!'*80}\n")
+        
         return jsonify({
             'output': f'Error: {str(e)}',
             'error': str(e),

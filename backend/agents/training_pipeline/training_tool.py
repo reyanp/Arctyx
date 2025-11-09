@@ -333,11 +333,14 @@ Response (model key only):"""
         )
         
         current_quality_score = eval_results.get("quality_score", 0.0)
-        reconstruction_error = eval_results.get("reconstruction_error", float('inf'))
+        reconstruction_error = eval_results.get("reconstruction_error", None)
         target_score = target_utility_pct  # Direct target (0-1 scale)
         
         print(f"Attempt {attempt} Quality Score: {current_quality_score:.4f} (Target: {target_score:.4f})")
-        print(f"  Reconstruction Error: {reconstruction_error:.6f}")
+        if reconstruction_error is not None:
+            print(f"  Reconstruction Error: {reconstruction_error:.6f}")
+        else:
+            print(f"  Reconstruction Error: N/A (no holdout test provided)")
         
         quality_history.append(current_quality_score)
         

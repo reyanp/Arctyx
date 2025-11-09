@@ -1,7 +1,7 @@
 {
-  "data_path": "/home/reyan/Documents/HackUTDNVIDIA/backend/testing_data/adult_agent.parquet",
-  "output_model_path": "/home/reyan/Documents/HackUTDNVIDIA/backend/testing_data/model_attempt_1.pth",
-  "preprocessor_path": "/home/reyan/Documents/HackUTDNVIDIA/backend/testing_data/preprocessor_attempt_1.joblib",
+  "data_path": "/home/justin/Projects/HackUTD2025/backend/testing_data/adult_agent.parquet",
+  "output_model_path": "/home/justin/Projects/HackUTD2025/backend/testing_data/model_attempt_1.pth",
+  "preprocessor_path": "/home/justin/Projects/HackUTD2025/backend/testing_data/preprocessor_attempt_1.joblib",
   "model_params": {
     "model_template": "mixed_data_cvae.py",
     "model_class_name": "MixedDataCVAE",

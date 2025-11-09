@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.tools import tool
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langgraph.prebuilt import create_react_agent
@@ -39,6 +40,15 @@ from anomaly_pipeline.anomaly_tool import run_anomaly_pipeline
 
 # Define FastAPI app
 app = FastAPI(title="DataFoundry Orchestrator")
+
+# Add CORS middleware to allow Flask API to make requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins (Flask API on port 5000)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Wrap our pipeline functions as LangChain tools
@@ -356,28 +366,47 @@ async def generate(request: GenerateRequest):
     - steps_completed: List of steps that were executed
     """
     try:
+        print(f"\n{'='*80}")
+        print(f"ORCHESTRATOR REQUEST RECEIVED")
+        print(f"{'='*80}")
+        print(f"Input message: {request.input_message[:200]}...")
+        
         # Strict fallback: If a dataset path is provided, run training -> generation programmatically
         # This prevents the LLM from looping or skipping required steps
         ds_match = re.search(r"Dataset path:\s*(.+)", request.input_message)
         if ds_match:
             ds_path = ds_match.group(1).strip()
+            print(f"Dataset path detected: {ds_path}")
+            print(f"File exists: {os.path.exists(ds_path)}")
+            
             if os.path.exists(ds_path):
+                print("Using programmatic fallback (bypassing LLM for reliability)")
+                
                 # Extract number of samples to generate (default 100)
                 num_match = re.search(r"(\d+)\s+(?:sample|samples)", request.input_message, re.IGNORECASE)
                 num_to_generate = int(num_match.group(1)) if num_match else 100
                 # Default label if not specified
                 label = 1.0
+                
+                print(f"Parameters: num_samples={num_to_generate}, label={label}")
 
                 # Step 1: Train model (skip evaluation if no holdout provided)
+                print("\nStep 1: Training model...")
                 config_path, model_path, preprocessor_path = run_training_pipeline(
                     labeled_data_path=ds_path,
                     holdout_test_path="",
                     target_utility_pct=0.85,
                     max_attempts=2
                 )
+                
+                print(f"Training complete:")
+                print(f"  config_path: {config_path}")
+                print(f"  model_path: {model_path}")
+                print(f"  preprocessor_path: {preprocessor_path}")
 
                 if all([config_path, model_path, preprocessor_path]) and os.path.exists(model_path):
                     # Step 2: Generate synthetic data (CSV by default for frontend usability)
+                    print("\nStep 2: Generating synthetic data...")
                     synth_path = run_generation_pipeline(
                         config_path=config_path,
                         model_path=model_path,
@@ -386,6 +415,8 @@ async def generate(request: GenerateRequest):
                         num_to_generate=num_to_generate,
                         output_format="csv"
                     )
+                    
+                    print(f"Generation complete: {synth_path}")
 
                     final_message = (
                         "I have trained the model and generated synthetic data:\n"
@@ -404,6 +435,13 @@ async def generate(request: GenerateRequest):
                         "anomaly_report_path": None,
                     }
                     steps_completed = ["training", "generation"]
+                    
+                    print(f"\n{'='*80}")
+                    print("ORCHESTRATOR RESPONSE (Programmatic)")
+                    print(f"{'='*80}")
+                    print(f"Steps completed: {steps_completed}")
+                    print(f"File paths: {file_paths}")
+                    print(f"{'='*80}\n")
 
                     return GenerateResponse(
                         output=final_message,
@@ -411,8 +449,10 @@ async def generate(request: GenerateRequest):
                         steps_completed=steps_completed,
                     )
                 else:
+                    print("Training failed, falling back to agent...")
                     pass  # Fall back to agent
-
+        
+        print("Using LLM agent for workflow execution...")
         # Run the agent with recursion limit to prevent infinite loops
         result = await agent.ainvoke(
             {"messages": [("user", request.input_message)]},
@@ -491,6 +531,12 @@ async def generate(request: GenerateRequest):
         )
     
     except RecursionError as e:
+        print(f"\n{'!'*80}")
+        print("ORCHESTRATOR ERROR: RecursionError")
+        print(f"{'!'*80}")
+        print(f"Error: {e}")
+        print(f"{'!'*80}\n")
+        
         return GenerateResponse(
             output="Error: Agent exceeded maximum steps (recursion limit). The workflow was too complex or the agent got stuck in a loop. Try simplifying your request or use Manual Mode for fine-grained control.",
             file_paths={
@@ -504,7 +550,17 @@ async def generate(request: GenerateRequest):
             steps_completed=[]
         )
     except Exception as e:
+        import traceback
         error_msg = str(e)
+        error_traceback = traceback.format_exc()
+        
+        print(f"\n{'!'*80}")
+        print("ORCHESTRATOR ERROR: Exception")
+        print(f"{'!'*80}")
+        print(f"Error message: {error_msg}")
+        print(f"Traceback:\n{error_traceback}")
+        print(f"{'!'*80}\n")
+        
         if "recursion" in error_msg.lower():
             error_msg = "Agent exceeded maximum steps. Try simplifying your request or use Manual Mode."
         
