@@ -38,10 +38,32 @@ const Index = () => {
   return (
     <PageWrapper>
       <div className="space-y-12">
+        {/* Hero Section */}
+        <section className="text-center space-y-4 py-8">
+          <h1 className="text-5xl font-bold text-foreground tracking-tight">
+            Arctyx
+          </h1>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            A smarter way to label, generate, and clean data.
+          </p>
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <span className="text-sm text-muted-foreground">Powered by</span>
+            <img 
+              src="/NvidiaLogo.png" 
+              alt="NVIDIA" 
+              className="h-5"
+            />
+          </div>
+          {/* Frost Divider */}
+          <div className="pt-8">
+            <div className="w-full max-w-3xl mx-auto h-px bg-gradient-to-r from-transparent via-ash to-transparent"></div>
+          </div>
+        </section>
+
         {/* Upload Section */}
         <section className="space-y-6">
           <SectionTitle subtitle="Upload your CSV dataset to begin synthetic data generation">
-            Upload Data
+            Upload
           </SectionTitle>
           <FileUpload />
         </section>
@@ -49,7 +71,7 @@ const Index = () => {
         {/* Upload History Section */}
         <section className="space-y-6">
           <SectionTitle subtitle="View and manage your previously uploaded datasets">
-            Upload History
+            History
           </SectionTitle>
           
           <CardModern>
