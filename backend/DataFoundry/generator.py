@@ -1,9 +1,13 @@
-import json
 import importlib
+import json
+import os
+import tempfile
+
+import joblib
+import pandas as pd
 import torch
 from torch.utils.data import Dataset
-import pandas as pd
-import joblib
+
 from DataFoundry.utils import Preprocessor
 
 
@@ -257,7 +261,6 @@ def generate_data_as_dataset(model_path, config_path, label, num_to_generate):
         GeneratedTensorDataset: PyTorch Dataset containing generated tensors
     """
     # Generate data to temporary file
-    import tempfile
     with tempfile.NamedTemporaryFile(suffix='.pt', delete=False) as tmp_file:
         tmp_path = tmp_file.name
     
@@ -276,7 +279,6 @@ def generate_data_as_dataset(model_path, config_path, label, num_to_generate):
         return GeneratedTensorDataset(tmp_path)
     except Exception as e:
         # Clean up on error
-        import os
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
         raise

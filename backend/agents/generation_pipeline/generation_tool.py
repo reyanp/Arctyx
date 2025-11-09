@@ -3,8 +3,8 @@ Simple worker tool for generating synthetic data.
 This is a direct wrapper around DataFoundry's generator module.
 """
 
-import sys
 import os
+import sys
 
 # Add DataFoundry to path
 datafoundry_path = os.path.join(os.path.dirname(__file__), '..', '..')

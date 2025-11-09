@@ -1,13 +1,16 @@
-import os
+import importlib
 import json
-import tempfile
+import os
 import shutil
+import tempfile
+import traceback
 import warnings
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
 from snorkel.labeling import labeling_function
+from torch.utils.data import Dataset, DataLoader
 
 # Suppress sklearn warnings about feature names
 warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
@@ -15,14 +18,12 @@ warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
 warnings.filterwarnings('ignore', message='.*does not have valid feature names.*')
 
 try:
-    # Try absolute imports (when running from project root)
     from DataFoundry.labeler import create_labels
     from DataFoundry.trainer import train_model
     from DataFoundry.generator import generate_data, generate_data_as_dataset, GeneratedTensorDataset
     from DataFoundry.evaluator import find_anomalies
     from DataFoundry.utils import Preprocessor, CustomDataset
 except ImportError:
-    # Fall back to relative imports (when running from within DataFoundry directory)
     from labeler import create_labels
     from trainer import train_model
     from generator import generate_data, generate_data_as_dataset, GeneratedTensorDataset
@@ -374,7 +375,6 @@ class DataFoundryTester:
             
         except Exception as e:
             print(f"✗ Training failed: {e}")
-            import traceback
             traceback.print_exc()
             self.test_results[f'training_{model_type}'] = {'success': False, 'error': str(e)}
             raise
@@ -506,7 +506,6 @@ class DataFoundryTester:
             
         except Exception as e:
             print(f"✗ Data synthesis failed: {e}")
-            import traceback
             traceback.print_exc()
             self.test_results[f'synthesis_{model_type}_{output_format}'] = {
                 'success': False,
@@ -610,7 +609,6 @@ class DataFoundryTester:
             
         except Exception as e:
             print(f"✗ Anomaly detection failed: {e}")
-            import traceback
             traceback.print_exc()
             self.test_results[f'anomaly_{model_type}'] = {
                 'success': False,
@@ -636,7 +634,6 @@ class DataFoundryTester:
         try:
             # Test 1: MixedDataCVAE
             print("\n--- Testing MixedDataCVAE ---")
-            import importlib
             mixed_model_module = importlib.import_module('DataFoundry.models.mixed_data_cvae')
             MixedDataCVAE = getattr(mixed_model_module, 'MixedDataCVAE')
             
@@ -764,7 +761,6 @@ class DataFoundryTester:
             
         except Exception as e:
             print(f"✗ Model Zoo test failed: {e}")
-            import traceback
             traceback.print_exc()
             self.test_results['model_zoo'] = {'success': False, 'error': str(e)}
             raise
@@ -922,7 +918,6 @@ class DataFoundryTester:
             
         except Exception as e:
             print(f"\n✗ Test suite failed: {e}")
-            import traceback
             traceback.print_exc()
             return self.test_results
 

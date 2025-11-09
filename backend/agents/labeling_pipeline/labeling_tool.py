@@ -1,12 +1,11 @@
-import re
 import os
+import re
+import sys
+
 import pandas as pd
 from snorkel.labeling import labeling_function, PandasLFApplier
 from snorkel.labeling.model import LabelModel
 
-# Import our clients and helper functions
-import sys
-import os
 # Add parent directory to path to access shared config
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -17,7 +16,10 @@ from config import (
 )
 
 # Import from local utils (same directory)
-from utils import evaluate_labels
+try:
+    from .utils import evaluate_labels
+except ImportError:
+    from utils import evaluate_labels
 
 
 def _load_lfs_from_string(lf_code_string: str, current_lfs: list) -> list:

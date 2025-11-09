@@ -1,47 +1,31 @@
 import os
 
 from dotenv import load_dotenv
-
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
 # Load the .env file
-
 load_dotenv()
 
-# Set the API key
-
-# The ChatNVIDIA client will automatically find this environment variable
-
+# Set the API key - The ChatNVIDIA client will automatically find this environment variable
 os.environ["NVIDIA_API_KEY"] = os.getenv("NVIDIA_API_KEY")
 
 # This is the default base URL for the NVIDIA API catalog
-
 # We don't need to set it in the .env, but we can be explicit.
-
 NIM_API_BASE_URL = "https://integrate.api.nvidia.com/v1/"
 
 # --- Define Our Agent Brains ---
 
 # High-Cost Brain (for complex generation and planning)
-
 NEMOTRON_HIGH_COST_CLIENT = ChatNVIDIA(
-
     base_url=NIM_API_BASE_URL,
-
     model="nvidia/llama-3.1-nemotron-ultra-253b-v1",
-    
     temperature=0.7
-
 )
 
 # Low-Cost Brain (for constrained, repetitive tasks like tuning)
-
 NEMOTRON_LOW_COST_CLIENT = ChatNVIDIA(
-
     base_url=NIM_API_BASE_URL,
-
     model="nvidia/nvidia-nemotron-nano-9b-v2"
-
 )
 
 # --- Define the Code Submission Tool ---

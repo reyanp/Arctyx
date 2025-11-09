@@ -1,11 +1,13 @@
-import os
 import json
-import tempfile
+import os
 import shutil
+import tempfile
+import traceback
 import warnings
-import pandas as pd
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import seaborn as sns
 from scipy import stats
 from sklearn.metrics import confusion_matrix
@@ -283,7 +285,6 @@ class AdultDatasetTester:
             
         except Exception as e:
             print(f"✗ Data labeling failed: {e}")
-            import traceback
             traceback.print_exc()
             self.test_results['labeling'] = {'success': False, 'error': str(e)}
             raise
@@ -561,7 +562,6 @@ class AdultDatasetTester:
                     
                 except Exception as e:
                     print(f"✗ {model_name} failed: {e}")
-                    import traceback
                     traceback.print_exc()
                     all_results[model_name] = {'success': False, 'error': str(e)}
             
@@ -585,7 +585,6 @@ class AdultDatasetTester:
             
         except Exception as e:
             print(f"✗ Data generation failed: {e}")
-            import traceback
             traceback.print_exc()
             self.test_results['generation'] = {'success': False, 'error': str(e)}
             raise
@@ -683,7 +682,6 @@ class AdultDatasetTester:
             
         except Exception as e:
             print(f"✗ Anomaly detection failed: {e}")
-            import traceback
             traceback.print_exc()
             self.test_results['anomaly_detection'] = {'success': False, 'error': str(e)}
             raise
@@ -754,7 +752,6 @@ class AdultDatasetTester:
             
         except Exception as e:
             print(f"\n✗ Test suite failed: {e}")
-            import traceback
             traceback.print_exc()
             return self.test_results
     
@@ -787,6 +784,5 @@ if __name__ == '__main__':
         print("(Set tester.cleanup() to remove test files)")
     except Exception as e:
         print(f"Error: {e}")
-        import traceback
         traceback.print_exc()
 

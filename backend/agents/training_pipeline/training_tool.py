@@ -9,11 +9,20 @@ train, evaluate, and tune the model.
 import json
 import os
 import sys
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 # Add parent directory to path to access shared config
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+# Add DataFoundry to path
+datafoundry_path = os.path.join(os.path.dirname(__file__), '..', '..')
+if datafoundry_path not in sys.path:
+    sys.path.insert(0, datafoundry_path)
+
+# Import our DataFoundry library's "worker" function
+import DataFoundry.trainer as trainer
 
 # Import our clients and Architect agent
 from config import (
@@ -27,14 +36,6 @@ try:
     from training_pipeline.utils import evaluate_model_utility
 except ImportError:
     from utils import evaluate_model_utility
-
-# Add DataFoundry to path
-datafoundry_path = os.path.join(os.path.dirname(__file__), '..', '..')
-if datafoundry_path not in sys.path:
-    sys.path.insert(0, datafoundry_path)
-
-# Import our DataFoundry library's "worker" function
-import DataFoundry.trainer as trainer
 
 
 def run_training_pipeline(labeled_data_path: str,

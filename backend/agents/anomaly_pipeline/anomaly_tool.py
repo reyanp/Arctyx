@@ -3,8 +3,8 @@ Simple worker tool for anomaly detection.
 This is a direct wrapper around DataFoundry's evaluator module.
 """
 
-import sys
 import os
+import sys
 
 # Add DataFoundry to path
 datafoundry_path = os.path.join(os.path.dirname(__file__), '..', '..')

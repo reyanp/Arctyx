@@ -2,6 +2,9 @@
 Utility functions for the training pipeline.
 """
 
+import hashlib
+
+import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score, f1_score
 from sklearn.ensemble import RandomForestClassifier
@@ -36,7 +39,6 @@ def evaluate_model_utility(
         target_col = 'income' if 'income' in real_test_df.columns else 'income_binary'
         
         # Filter to only numerical columns (same as training pipeline)
-        import numpy as np
         numerical_cols = real_test_df.select_dtypes(include=[np.number]).columns.tolist()
         if target_col in numerical_cols:
             numerical_cols.remove(target_col)
@@ -73,7 +75,6 @@ def evaluate_model_utility(
         
         # Simulate a utility score based on model path hash (deterministic but varied)
         # This gives us scores between 70-100% of baseline
-        import hashlib
         hash_val = int(hashlib.md5(model_path.encode()).hexdigest(), 16)
         utility_ratio = 0.70 + (hash_val % 30) / 100.0  # 0.70 to 0.99
         utility_score = baseline_score * utility_ratio

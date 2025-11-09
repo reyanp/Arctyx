@@ -1,9 +1,14 @@
+import json
 import os
+import re
+import shutil
 import sys
 import tempfile
-import shutil
-import pandas as pd
+import time
+
 import numpy as np
+import pandas as pd
+import requests
 
 # Add project root to path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -19,11 +24,9 @@ if labeling_pipeline_path not in sys.path:
 try:
     from labeling_pipeline.labeling_tool import run_labeling_pipeline
 except ImportError:
-    # Try alternative import path (when running as module or direct script)
     try:
         from agents.labeling_pipeline.labeling_tool import run_labeling_pipeline
     except ImportError:
-        # Last resort: direct import from labeling_pipeline directory
         labeling_dir = os.path.join(os.path.dirname(__file__), 'labeling_pipeline')
         if labeling_dir not in sys.path:
             sys.path.insert(0, labeling_dir)
@@ -64,6 +67,125 @@ except ImportError:
         if anomaly_dir not in sys.path:
             sys.path.insert(0, anomaly_dir)
         from anomaly_tool import run_anomaly_pipeline
+
+
+# ============================================================================
+# NAT Server Helper Functions for Orchestrator Tests
+# ============================================================================
+
+def get_nat_url():
+    """Get NAT server base URL from environment or use default."""
+    return os.getenv("NAT_URL", "http://localhost:8000")
+
+
+def call_nat_workflow(user_message: str, nat_url: str = None, timeout: int = 600) -> dict:
+    """
+    Call the NAT server's /generate endpoint with a user message.
+    
+    Based on NVIDIA NeMo Agent Toolkit documentation:
+    https://docs.nvidia.com/nemo/agent-toolkit/latest/workflows/run-workflows.html
+    
+    Args:
+        user_message: The natural language instruction for the orchestrator
+        nat_url: Base URL of NAT server (default: from env or http://localhost:8000)
+        timeout: Request timeout in seconds (default: 600s for long pipelines)
+    
+    Returns:
+        Response dictionary from the NAT server
+    """
+    if nat_url is None:
+        nat_url = get_nat_url()
+    
+    endpoint = f"{nat_url}/generate"
+    headers = {"Content-Type": "application/json"}
+    payload = {"input_message": user_message}
+    
+    print(f"Calling NAT endpoint: {endpoint}")
+    print(f"Request payload: {json.dumps(payload, indent=2)}")
+    
+    try:
+        response = requests.post(endpoint, headers=headers, json=payload, timeout=timeout)
+        response.raise_for_status()
+        result = response.json()
+        print(f"NAT Response received (status {response.status_code})")
+        return result
+    except requests.exceptions.ConnectionError as e:
+        raise RuntimeError(
+            f"Failed to connect to NAT server at {nat_url}. "
+            f"Make sure the server is running with: nat serve --config_file backend/agents/workflow.yml"
+        ) from e
+    except requests.exceptions.Timeout as e:
+        raise RuntimeError(
+            f"NAT server request timed out after {timeout}s. "
+            f"The orchestrator may be taking longer than expected."
+        ) from e
+    except requests.exceptions.HTTPError as e:
+        raise RuntimeError(
+            f"NAT server returned error {response.status_code}: {response.text[:500]}"
+        ) from e
+
+
+def extract_path_from_response(response: dict, key_hints: list) -> str:
+    """
+    Extract a file path from NAT response by searching various possible locations.
+    
+    Args:
+        response: Response dictionary from NAT server
+        key_hints: List of possible key names to search for (e.g., ['labeled_output_path', 'output_path'])
+    
+    Returns:
+        Extracted file path or None if not found
+    """
+    
+    # Try common response structures
+    if isinstance(response, dict):
+        # Direct keys
+        for key in key_hints:
+            if key in response and response[key]:
+                return response[key]
+        
+        # Nested in 'output'
+        if "output" in response and isinstance(response["output"], dict):
+            for key in key_hints:
+                if key in response["output"] and response["output"][key]:
+                    return response["output"][key]
+        
+        # Nested in 'result'
+        if "result" in response and isinstance(response["result"], dict):
+            for key in key_hints:
+                if key in response["result"] and response["result"][key]:
+                    return response["result"][key]
+        
+        # Try to parse as JSON string in 'output' or 'result'
+        for response_key in ["output", "result", "message"]:
+            if response_key in response and isinstance(response[response_key], str):
+                try:
+                    parsed = json.loads(response[response_key])
+                    if isinstance(parsed, dict):
+                        for key in key_hints:
+                            if key in parsed and parsed[key]:
+                                return parsed[key]
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        
+        # Try to extract path from natural language text in 'output' or 'result'
+        for response_key in ["output", "result", "message"]:
+            if response_key in response and isinstance(response[response_key], str):
+                text = response[response_key]
+                # Look for patterns like "labeled_output_path: /path/to/file"
+                for key in key_hints:
+                    pattern = rf'{key}:\s*([/\w\-_.]+(?:\.parquet|\.pth|\.json|\.joblib|\.csv|\.pt))'
+                    match = re.search(pattern, text)
+                    if match:
+                        return match.group(1)
+                
+                # Also try finding any file path that looks valid
+                path_pattern = r'(/tmp/[^\s]+(?:\.parquet|\.pth|\.json|\.joblib|\.csv|\.pt))'
+                match = re.search(path_pattern, text)
+                if match:
+                    return match.group(1)
+    
+    return None
 
 
 class DataFoundryAgentTester:
@@ -355,7 +477,6 @@ class DataFoundryAgentTester:
                 raise FileNotFoundError(f"Model file not found: {model_path}")
             
             # Read config to get details
-            import json
             with open(config_path, 'r') as f:
                 config = json.load(f)
             
@@ -565,17 +686,216 @@ class DataFoundryAgentTester:
             }
             raise
     
-    def test_orchestrator_workflow(self):
+    def test_orchestrator_single_labeling(self, adult_csv_path=None):
         """
-        Test the full orchestrator workflow (to be implemented).
-        This will test the complete end-to-end pipeline orchestration.
+        Test orchestrator with a single labeling task via NAT server.
+        
+        This tests the orchestrator's ability to:
+        - Understand natural language instructions
+        - Select and call the correct pipeline tool (run_labeling_pipeline)
+        - Return the labeled dataset path
+        
+        Requires: NAT server running with: nat serve --config_file backend/agents/workflow.yml
         """
         print("\n" + "="*60)
-        print("TEST: Orchestrator Workflow")
+        print("TEST: Orchestrator - Single Task (Labeling)")
         print("="*60)
-        print("⚠ Not yet implemented - will test full orchestrator pipeline")
-        # TODO: Implement orchestrator workflow test
-        pass
+        
+        # Find adult.csv
+        if adult_csv_path is None:
+            adult_csv_path = os.path.join(project_root, 'testing_data', 'adult.csv')
+            if not os.path.exists(adult_csv_path):
+                adult_csv_path = 'testing_data/adult.csv'
+                if not os.path.exists(adult_csv_path):
+                    raise FileNotFoundError(f"Could not find adult.csv")
+        
+        # Prepare test data
+        raw_data_path, ground_truth_path = self.prepare_test_data(adult_csv_path)
+        
+        # Craft a natural language instruction for the orchestrator
+        user_message = f"""Please label this dataset using weak supervision to predict income > $50K.
+
+Here are the file paths:
+- Unlabeled data: {raw_data_path}
+- Ground truth examples: {ground_truth_path}
+
+Target AUC: 0.70
+Max attempts: 1
+
+Return the path to the labeled output file."""
+        
+        print(f"\nSending instruction to orchestrator...")
+        print(f"Raw data: {raw_data_path}")
+        print(f"Ground truth: {ground_truth_path}")
+        
+        try:
+            # Call NAT server
+            response = call_nat_workflow(user_message, timeout=300)
+            print(f"\nOrchestrator response: {json.dumps(response, indent=2)[:500]}...")
+            
+            # Extract labeled file path from response
+            labeled_path = extract_path_from_response(
+                response, 
+                ['labeled_output_path', 'output_path', 'labeled_file_path', 'result_path']
+            )
+            
+            if not labeled_path:
+                raise ValueError(f"Could not find labeled output path in response: {response}")
+            
+            if not os.path.exists(labeled_path):
+                raise FileNotFoundError(f"Labeled file not found at: {labeled_path}")
+            
+            # Validate the labeled data
+            df_labeled = pd.read_parquet(labeled_path)
+            assert 'label_probability' in df_labeled.columns, "Missing label_probability column"
+            assert len(df_labeled) > 0, "Labeled data is empty"
+            
+            print(f"\n✓ Orchestrator labeling task successful!")
+            print(f"  - Labeled {len(df_labeled)} samples")
+            print(f"  - Output: {labeled_path}")
+            
+            self.test_results['orchestrator_single_labeling'] = {
+                'success': True,
+                'labeled_path': labeled_path,
+                'num_samples': len(df_labeled)
+            }
+            return self.test_results['orchestrator_single_labeling']
+            
+        except Exception as e:
+            print(f"\n✗ Orchestrator labeling test failed: {e}")
+            self.test_results['orchestrator_single_labeling'] = {
+                'success': False,
+                'error': str(e)
+            }
+            raise
+    
+    def test_orchestrator_multi_pipeline(self, adult_csv_path=None, num_generate=50):
+        """
+        Test orchestrator with multi-pipeline end-to-end workflow via NAT server.
+        
+        This tests the orchestrator's ability to:
+        - Chain multiple pipeline tools together (Label → Train → Generate)
+        - Manage file path dependencies between steps
+        - Execute a complex, multi-step plan
+        
+        Workflow: Unlabeled data → Label → Train model → Generate synthetic data
+        
+        Requires: NAT server running with: nat serve --config_file backend/agents/workflow.yml
+        """
+        print("\n" + "="*60)
+        print("TEST: Orchestrator - Multi-Pipeline (Label → Train → Generate)")
+        print("="*60)
+        
+        # Find adult.csv
+        if adult_csv_path is None:
+            adult_csv_path = os.path.join(project_root, 'testing_data', 'adult.csv')
+            if not os.path.exists(adult_csv_path):
+                adult_csv_path = 'testing_data/adult.csv'
+                if not os.path.exists(adult_csv_path):
+                    raise FileNotFoundError(f"Could not find adult.csv")
+        
+        # Prepare test data and holdout
+        raw_data_path, ground_truth_path = self.prepare_test_data(adult_csv_path)
+        
+        # Create holdout test set
+        df = pd.read_csv(adult_csv_path)
+        df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_').str.replace('-', '_')
+        df['income_binary'] = (df['income'].str.strip() == '>50K').astype(int)
+        df = df.drop(columns=['income'])
+        holdout_df = df.sample(n=500, random_state=123)
+        holdout_test_path = os.path.join(self.test_dir, 'holdout_test.parquet')
+        holdout_df.to_parquet(holdout_test_path, index=False)
+        
+        # Craft a comprehensive natural language instruction for the orchestrator
+        user_message = f"""Execute the complete DataFoundry pipeline with these steps:
+
+STEP 1: LABEL the unlabeled dataset using weak supervision
+- Unlabeled data path: {raw_data_path}
+- Ground truth examples path: {ground_truth_path}
+- Target AUC: 0.70
+- Max attempts: 1
+
+STEP 2: TRAIN a generative model on the labeled data
+- Use the labeled data from Step 1
+- Holdout test data path: {holdout_test_path}
+- Target utility: 80% of baseline
+- Max attempts: 1
+
+STEP 3: GENERATE synthetic data using the trained model
+- Label value: 1.0
+- Number of samples: {num_generate}
+- Output format: CSV
+
+Please execute all three steps in sequence and return a JSON object with these keys:
+- labeled_data_path
+- config_path
+- model_path
+- preprocessor_path
+- synthetic_data_path
+
+DO NOT include any explanations or markdown formatting - ONLY return the JSON object."""
+        
+        print(f"\nSending multi-pipeline instruction to orchestrator...")
+        print(f"Expected workflow: Label → Train → Generate")
+        
+        try:
+            # Call NAT server with longer timeout for multi-step workflow
+            response = call_nat_workflow(user_message, timeout=900)
+            print(f"\nOrchestrator response received")
+            print(f"Response preview: {json.dumps(response, indent=2)[:800]}...")
+            
+            # Extract all required paths
+            paths = {}
+            required_keys = {
+                'labeled_data_path': ['labeled_data_path', 'labeled_output_path', 'labeled_file_path'],
+                'config_path': ['config_path', 'model_config_path'],
+                'model_path': ['model_path', 'trained_model_path'],
+                'preprocessor_path': ['preprocessor_path', 'preproc_path'],
+                'synthetic_data_path': ['synthetic_data_path', 'synthetic_output_path', 'generated_data_path']
+            }
+            
+            for key, hints in required_keys.items():
+                path = extract_path_from_response(response, hints)
+                if not path or not os.path.exists(path):
+                    raise FileNotFoundError(
+                        f"Required file '{key}' not found. "
+                        f"Searched for: {hints}. "
+                        f"Response: {json.dumps(response)[:500]}"
+                    )
+                paths[key] = path
+            
+            # Validate each output
+            df_labeled = pd.read_parquet(paths['labeled_data_path'])
+            assert 'label_probability' in df_labeled.columns
+            
+            with open(paths['config_path'], 'r') as f:
+                config = json.load(f)
+            model_type = config.get('model_params', {}).get('model_class_name', 'Unknown')
+            
+            # Validate synthetic data
+            synthetic_df = pd.read_csv(paths['synthetic_data_path'])
+            
+            print(f"\n✓ Orchestrator multi-pipeline successful!")
+            print(f"  - Labeled: {len(df_labeled)} samples → {os.path.basename(paths['labeled_data_path'])}")
+            print(f"  - Trained: {model_type} model → {os.path.basename(paths['model_path'])}")
+            print(f"  - Generated: {len(synthetic_df)} samples → {os.path.basename(paths['synthetic_data_path'])}")
+            
+            self.test_results['orchestrator_multi_pipeline'] = {
+                'success': True,
+                **paths,
+                'num_labeled': len(df_labeled),
+                'model_type': model_type,
+                'num_generated': len(synthetic_df)
+            }
+            return self.test_results['orchestrator_multi_pipeline']
+            
+        except Exception as e:
+            print(f"\n✗ Orchestrator multi-pipeline test failed: {e}")
+            self.test_results['orchestrator_multi_pipeline'] = {
+                'success': False,
+                'error': str(e)
+            }
+            raise
     
     def run_all_tests(self):
         """
@@ -628,7 +948,8 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='Test DataFoundry Agent Pipelines')
     parser.add_argument('--test', type=str, 
-                       choices=['all', 'labeling', 'training', 'generation', 'anomaly'], 
+                       choices=['all', 'labeling', 'training', 'generation', 'anomaly', 
+                               'orchestrator-single', 'orchestrator-multi', 'orchestrator-all'], 
                        default='all',
                        help='Which test(s) to run (default: all)')
     parser.add_argument('--labeled-data', type=str, default=None,
@@ -653,8 +974,15 @@ if __name__ == '__main__':
                        help='Number of samples to generate (for generation pipeline, default: 100)')
     parser.add_argument('--label', type=float, default=1.0,
                        help='Label value for generation (default: 1.0)')
+    parser.add_argument('--nat-url', type=str, 
+                       default=os.getenv('NAT_URL', 'http://localhost:8000'),
+                       help='NAT server base URL (default: env NAT_URL or http://localhost:8000)')
     
     args = parser.parse_args()
+    
+    # Set NAT_URL environment variable if provided via CLI
+    if args.nat_url:
+        os.environ['NAT_URL'] = args.nat_url
     
     # Run tests
     tester = DataFoundryAgentTester()
@@ -702,6 +1030,29 @@ if __name__ == '__main__':
                 data_to_scan_path=args.data_to_scan
             )
         
+        # Orchestrator tests (require NAT server running)
+        if args.test == 'orchestrator-single' or args.test == 'orchestrator-all':
+            print("\n" + "="*60)
+            print("RUNNING ORCHESTRATOR - SINGLE TASK (LABELING) TEST")
+            print("="*60)
+            print(f"NAT Server URL: {get_nat_url()}")
+            print("NOTE: This test requires NAT server to be running:")
+            print("  cd /home/justin/Projects/HackUTD2025")
+            print("  nat serve --config_file backend/agents/workflow.yml")
+            print()
+            tester.test_orchestrator_single_labeling()
+        
+        if args.test == 'orchestrator-multi' or args.test == 'orchestrator-all':
+            print("\n" + "="*60)
+            print("RUNNING ORCHESTRATOR - MULTI-PIPELINE (LABEL→TRAIN→GENERATE) TEST")
+            print("="*60)
+            print(f"NAT Server URL: {get_nat_url()}")
+            print("NOTE: This test requires NAT server to be running:")
+            print("  cd /home/justin/Projects/HackUTD2025")
+            print("  nat serve --config_file backend/agents/workflow.yml")
+            print()
+            tester.test_orchestrator_multi_pipeline(num_generate=args.num_samples)
+        
         # Print summary
         print("\n" + "="*60)
         print("TEST SUMMARY")
@@ -724,6 +1075,13 @@ if __name__ == '__main__':
                     print(f"  - Scanned {result.get('num_scanned', 0)} samples")
                     print(f"  - Anomalies detected: {result.get('num_anomalies', 0)}")
                     print(f"  - Report: {os.path.basename(result.get('report_path', ''))}")
+                elif test_name == 'orchestrator_single_labeling':
+                    print(f"  - Labeled {result.get('num_samples', 0)} samples via orchestrator")
+                    print(f"  - Output: {os.path.basename(result.get('labeled_path', ''))}")
+                elif test_name == 'orchestrator_multi_pipeline':
+                    print(f"  - Labeled: {result.get('num_labeled', 0)} samples")
+                    print(f"  - Trained: {result.get('model_type', 'Unknown')} model")
+                    print(f"  - Generated: {result.get('num_generated', 0)} samples")
             else:
                 print(f"  - Error: {result.get('error', 'Unknown error')}")
         

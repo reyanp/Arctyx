@@ -11,3 +11,7 @@ python-dotenv
 langchain-nvidia-ai-endpoints
 langchain
 langchain-core
+Flask
+flask-cors
+requests
+nvidia-nat[langchain]
